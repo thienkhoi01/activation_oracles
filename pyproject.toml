@@ -20,9 +20,10 @@ dependencies = [
     "datasets",
     "huggingface-hub",
     "matplotlib",
-    "torch",
-    "transformers",
-    "numpy"
+    "torch==2.7.0",
+    "numpy",
+    "transformers==4.51.1",
+    "vllm>=0.9.1",
 ]
 
 [build-system]
