@@ -11,8 +11,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenize
 import pickle
 from dataclasses import dataclass, field, asdict
 import einops
-from rapidfuzz.distance import Levenshtein as lev
-from tqdm import tqdm
 
 import interp_tools.saes.jumprelu_sae as jumprelu_sae
 import interp_tools.model_utils as model_utils
@@ -450,205 +448,169 @@ def collect_few_shot_examples(results: dict, max_examples: int = 5) -> list[dict
     return examples
 
 
-def main():
-    """Main script logic."""
-    cfg = SelfInterpConfig()
+# %%
+"""Main script logic."""
+cfg = SelfInterpConfig()
 
-    cfg.num_features_to_run = 10
-    cfg.steering_coefficient = 2.0
-    cfg.batch_size = 8
-    verbose = True
+cfg.num_features_to_run = 10
+cfg.steering_coefficient = 2.0
 
-    print(asdict(cfg))
-    dtype = torch.bfloat16
-    device = torch.device("cuda")
+print(asdict(cfg))
+dtype = torch.bfloat16
+device = torch.device("cuda")
 
-    model, tokenizer, sae = load_sae_and_model(cfg, dtype, device)
-    submodule = model_utils.get_submodule(model, cfg.sae_layer)
+model, tokenizer, sae = load_sae_and_model(cfg, dtype, device)
+submodule = model_utils.get_submodule(model, cfg.sae_layer)
 
-    # %%
+# %%
 
-    api_data_filename = "contrastive_rewriting_results_10k.pkl"
+api_data_filename = "contrastive_rewriting_results_10k.pkl"
 
-    with open(api_data_filename, "rb") as f:
-        api_data = pickle.load(f)
+with open(api_data_filename, "rb") as f:
+    api_data = pickle.load(f)
 
-    few_shot_examples = collect_few_shot_examples(api_data, max_examples=5)
-    orig_input_ids, orig_positions = build_few_shot_prompt(
-        few_shot_examples, tokenizer, device
-    )
-    orig_input_ids = orig_input_ids.squeeze()
-    few_shot_prompt = tokenizer.decode(orig_input_ids)
+few_shot_examples = collect_few_shot_examples(api_data, max_examples=5)
+input_ids, positions = build_few_shot_prompt(few_shot_examples, tokenizer, device)
+input_ids = input_ids.squeeze()
 
-    few_shot_indices = [example["feature_idx"] for example in few_shot_examples]
+few_shot_indices = [example["feature_idx"] for example in few_shot_examples]
 
-    # input_ids, positions, few_shot_indices = hardcoded_gemma_2_9b_it_few_shot_example(
-    #     cfg.model_name, tokenizer, device
-    # )
+# input_ids, positions, few_shot_indices = hardcoded_gemma_2_9b_it_few_shot_example(
+#     cfg.model_name, tokenizer, device
+# )
 
-    test_features = api_data["results"][-cfg.test_set_size :]
+test_features = api_data["results"][-cfg.test_set_size :]
 
-    for feature_idx in test_features:
-        assert feature_idx["feature_idx"] not in few_shot_indices
-        cfg.features_to_explain.append(feature_idx["feature_idx"])
-        if len(cfg.features_to_explain) >= cfg.num_features_to_run:
-            break
+for feature_idx in test_features:
+    assert feature_idx["feature_idx"] not in few_shot_indices
+    cfg.features_to_explain.append(feature_idx["feature_idx"])
+    if len(cfg.features_to_explain) >= cfg.num_features_to_run:
+        break
 
-    assert len(cfg.features_to_explain) == cfg.num_features_to_run
+assert len(cfg.features_to_explain) == cfg.num_features_to_run
 
-    cur = 0
-    pbar = tqdm(total=len(cfg.features_to_explain), desc="features", unit="feat")
-    all_results_data = []
-
-    while cur < len(cfg.features_to_explain):
-        batch_steering_vectors = []
-        batch_feature_indices = []
-        batch_positions = []
-        for i in range(cfg.batch_size):
-            if cur >= len(cfg.features_to_explain):
-                break
-
-            target_feature_idx = cfg.features_to_explain[cur]
-            batch_feature_indices.append(target_feature_idx)
-            print(
-                f"\n{'=' * 20} CONSTRUCTING DATA FOR FEATURE {target_feature_idx} {'=' * 20}"
-            )
-
-            # 2. Prepare feature vectors for steering
-            # We use decoder weights (W_dec) as they map from the feature space back to the residual stream.
-            all_feature_indices = few_shot_indices + [target_feature_idx]
-
-            if cfg.use_decoder_vectors:
-                feature_vectors = [sae.W_dec[i] for i in all_feature_indices]
-            else:
-                feature_vectors = [sae.W_enc[:, i] for i in all_feature_indices]
-
-            batch_steering_vectors.append(feature_vectors)
-            batch_positions.append(orig_positions)
-
-            cur += 1
-            pbar.update(1)
-
-        input_ids = einops.repeat(
-            orig_input_ids, "L -> B L", B=len(batch_steering_vectors)
-        )
-        attn_mask = torch.ones_like(input_ids, dtype=torch.bool).to(device)
-
-        tokenized_input = {
-            "input_ids": input_ids,
-            "attention_mask": attn_mask,
-        }
-
-        # 3. Create and apply the activation steering hook
-        hook_fn = get_activation_steering_hook(
-            vectors=batch_steering_vectors,
-            positions=batch_positions,
-            steering_coefficient=cfg.steering_coefficient,
-            device=device,
-            dtype=dtype,
-        )
-
-        # 4. Generate the explanation with activation steering
-        print("Generating explanation with activation steering...")
-
-        with add_hook(submodule, hook_fn):
-            output_ids = model.generate(**tokenized_input, **cfg.generation_kwargs)
-
-        # Decode only the newly generated tokens
-        generated_tokens = output_ids[:, input_ids.shape[1] :]
-        decoded_output = tokenizer.batch_decode(
-            generated_tokens, skip_special_tokens=True
-        )
-
-        pos_statements = []
-        neg_statements = []
-        explanations = []
-
-        for i, output in enumerate(decoded_output):
-            # Note: we add the "Positive example:" prefix to the positive sentence
-            # because we prefill the model's response with "Positive example:"
-            parsed_result = parse_generated_explanation(f"Positive example:{output}")
-            print(f"Parsed result: {parsed_result}")
-            if parsed_result:
-                pos_statements.append(parsed_result["positive_sentence"])
-                neg_statements.append(parsed_result["negative_sentence"])
-                explanations.append(parsed_result["explanation"])
-            else:
-                pos_statements.append("")
-                neg_statements.append("")
-                explanations.append("")
-
-        pos_activations_BLK = get_feature_activations(
-            model=model,
-            tokenizer=tokenizer,
-            submodule=submodule,
-            sae=sae,
-            input_strs=pos_statements,
-            feature_indices=batch_feature_indices,
-        )
-
-        neg_activations_BLK = get_feature_activations(
-            model=model,
-            tokenizer=tokenizer,
-            submodule=submodule,
-            sae=sae,
-            input_strs=neg_statements,
-            feature_indices=batch_feature_indices,
-        )
-
-        if verbose:
-            for i in range(len(pos_statements)):
-                print(pos_statements[i])
-                print(neg_statements[i])
-                print(explanations[i])
-                print("-" * 100)
-
-        print(pos_activations_BLK.shape)
-        print(neg_activations_BLK.shape)
-        print(pos_activations_BLK.max(dim=1)[0].max(dim=0)[0])
-        print(neg_activations_BLK.max(dim=1)[0].max(dim=0)[0])
-
-        for i, output in enumerate(decoded_output):
-            feature_result = {
-                "feature_idx": feature_idx,
-                "api_prompt": few_shot_prompt,
-                "api_response": output,
-                "explanation": explanations[i],
-                "sentence_data": [],
-            }
-
-            pos_activations_L = pos_activations_BLK[i, :, i]
-            neg_activations_L = neg_activations_BLK[i, :, i]
-
-            sentence_distance = lev.normalized_distance(
-                pos_statements[i], neg_statements[i]
-            )
-
-            sentence_data = {
-                "sentence_index": 0,
-                "original_sentence": pos_statements[i],
-                "rewritten_sentence": neg_statements[i],
-                "original_activations": pos_activations_L,
-                "rewritten_activations": neg_activations_L,
-                "original_max_activation": pos_activations_L.max().item(),
-                "rewritten_max_activation": neg_activations_L.max().item(),
-                "original_mean_activation": pos_activations_L.mean().item(),
-                "rewritten_mean_activation": neg_activations_L.mean().item(),
-                "sentence_distance": sentence_distance,
-            }
-
-            feature_result["sentence_data"].append(sentence_data)
-
-            all_results_data.append(feature_result)
-
-    # 5. Save Results
-    print(f"\nSaving all results to {cfg.results_filename}")
-    with open(cfg.results_filename, "wb") as f:
-        # We can also save the config itself for perfect reproducibility
-        pickle.dump({"config": asdict(cfg), "results": all_results_data}, f)
-
-    pbar.close()
+cfg.features_to_explain = [7159, 14070, 13115]
 
 
-if __name__ == "__main__":
-    main()
+# %%
+
+cur = 0
+all_feature_vectors = []
+all_positions = []
+for i in range(cfg.batch_size):
+    if cur >= len(cfg.features_to_explain):
+        break
+
+    target_feature_idx = cfg.features_to_explain[cur]
+    print(f"\n{'=' * 20} EXPLAINING FEATURE {target_feature_idx} {'=' * 20}")
+
+    # 2. Prepare feature vectors for steering
+    # We use decoder weights (W_dec) as they map from the feature space back to the residual stream.
+    all_feature_indices = few_shot_indices + [target_feature_idx]
+
+    if cfg.use_decoder_vectors:
+        feature_vectors = [sae.W_dec[i] for i in all_feature_indices]
+    else:
+        feature_vectors = [sae.W_enc[:, i] for i in all_feature_indices]
+
+    all_feature_vectors.append(feature_vectors)
+    all_positions.append(positions)
+
+    cur += 1
+
+input_ids = einops.repeat(input_ids, "L -> B L", B=len(all_feature_vectors))
+attn_mask = torch.ones_like(input_ids, dtype=torch.bool).to(device)
+
+print(input_ids.shape)
+print(attn_mask.shape)
+
+tokenized_input = {
+    "input_ids": input_ids,
+    "attention_mask": attn_mask,
+}
+
+
+# %%
+
+
+# 3. Create and apply the activation steering hook
+hook_fn = get_activation_steering_hook(
+    vectors=all_feature_vectors,
+    positions=all_positions,
+    steering_coefficient=cfg.steering_coefficient,
+    device=device,
+    dtype=dtype,
+)
+
+# 4. Generate the explanation with activation steering
+print("Generating explanation with activation steering...")
+
+cfg.generation_kwargs["temperature"] = 0.5
+cfg.generation_kwargs["do_sample"] = True
+
+with add_hook(submodule, hook_fn):
+    output_ids = model.generate(**tokenized_input, **cfg.generation_kwargs)
+
+# Decode only the newly generated tokens
+generated_tokens = output_ids[:, input_ids.shape[1] :]
+decoded_output = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+for i in range(len(decoded_output)):
+    print(decoded_output[i])
+    print("-" * 100)
+
+# %%
+
+pos_statements = []
+neg_statements = []
+explanations = []
+
+for i, output in enumerate(decoded_output):
+    # Note: we add the "Positive example:" prefix to the positive sentence
+    # because we prefill the model's response with "Positive example:"
+    parsed_result = parse_generated_explanation(f"Positive example:{output}")
+    print(f"Parsed result: {parsed_result}")
+    if parsed_result:
+        pos_statements.append(parsed_result["positive_sentence"])
+        neg_statements.append(parsed_result["negative_sentence"])
+        explanations.append(parsed_result["explanation"])
+    else:
+        pos_statements.append("")
+        neg_statements.append("")
+        explanations.append("")
+
+pos_activations_BLK = get_feature_activations(
+    model=model,
+    tokenizer=tokenizer,
+    submodule=submodule,
+    sae=sae,
+    input_strs=pos_statements,
+    feature_indices=cfg.features_to_explain,
+)
+
+neg_activations_BLK = get_feature_activations(
+    model=model,
+    tokenizer=tokenizer,
+    submodule=submodule,
+    sae=sae,
+    input_strs=neg_statements,
+    feature_indices=cfg.features_to_explain,
+)
+
+# %%
+
+for i in range(len(pos_statements)):
+    print(pos_statements[i])
+    print(neg_statements[i])
+    print(explanations[i])
+    print("-" * 100)
+
+print(pos_activations_BLK.shape)
+print(neg_activations_BLK.shape)
+print(pos_activations_BLK.max(dim=1)[0].max(dim=0)[0])
+print(neg_activations_BLK.max(dim=1)[0].max(dim=0)[0])
+
+# %%
+
+
+# %%
