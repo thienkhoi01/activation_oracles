@@ -610,7 +610,7 @@ def main():
 
         for i, output in enumerate(decoded_output):
             feature_result = {
-                "feature_idx": feature_idx,
+                "feature_idx": batch_feature_indices[i],
                 "api_prompt": few_shot_prompt,
                 "api_response": output,
                 "explanation": explanations[i],
