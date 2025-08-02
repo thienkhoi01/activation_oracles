@@ -111,9 +111,17 @@ def get_yes_no_probs(
     return yes_probs_B, no_probs_B
 
 
-def get_submodule(model: AutoModelForCausalLM, layer: int):
+def get_submodule(model: AutoModelForCausalLM, layer: int, use_lora: bool = False):
     """Gets the residual stream submodule"""
     model_name = model.config._name_or_path
+
+    if use_lora:
+        if "pythia" in model_name:
+            raise ValueError("Need to determine how to get submodule for LoRA")
+        elif "gemma" in model_name or "mistral" in model_name or "Llama" in model_name:
+            return model.base_model.model.model.layers[layer]
+        else:
+            raise ValueError(f"Please add submodule for model {model_name}")
 
     if "pythia" in model_name:
         return model.gpt_neox.layers[layer]
