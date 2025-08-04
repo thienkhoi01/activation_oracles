@@ -29,6 +29,7 @@ import json
 
 import interp_tools.saes.jumprelu_sae as jumprelu_sae
 import interp_tools.model_utils as model_utils
+import interp_tools.introspect_utils as introspect_utils
 
 
 # ==============================================================================
@@ -259,49 +260,6 @@ def parse_generated_explanation(text: str) -> Optional[dict[str, str]]:
         "negative_sentence": negative.strip(),
         "explanation": explanation.strip(),
     }
-
-
-def get_feature_activations(
-    model: AutoModelForCausalLM,
-    tokenizer: PreTrainedTokenizer,
-    submodule: torch.nn.Module,
-    sae: jumprelu_sae.JumpReluSAE,
-    input_strs: list[str],
-    add_bos: bool = True,
-    ignore_bos: bool = True,
-    use_chat_template: bool = False,
-) -> torch.Tensor:
-    if use_chat_template:
-        for i, input_str in enumerate(input_strs):
-            input_strs[i] = tokenizer.apply_chat_template(
-                [{"role": "user", "content": input_str}],
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-
-    tokenized_strs = tokenizer(
-        input_strs, return_tensors="pt", add_special_tokens=add_bos, padding=True
-    ).to(model.device)
-
-    with torch.no_grad():
-        pos_acts_BLD = model_utils.collect_activations(model, submodule, tokenized_strs)
-
-        encoded_pos_acts_BLF = sae.encode(pos_acts_BLD)
-
-    if ignore_bos:
-        bos_mask = tokenized_strs.input_ids == tokenizer.bos_token_id
-        assert bos_mask.sum() == encoded_pos_acts_BLF.shape[0], (
-            f"Expected {encoded_pos_acts_BLF.shape[0]} BOS tokens, but found {bos_mask.sum()}"
-        )
-
-        mask = (
-            (tokenized_strs.input_ids == tokenizer.pad_token_id)
-            | (tokenized_strs.input_ids == tokenizer.eos_token_id)
-            | (tokenized_strs.input_ids == tokenizer.bos_token_id)
-        ).to(dtype=torch.bool)
-        encoded_pos_acts_BLF[mask] = 0
-
-    return encoded_pos_acts_BLF
 
 
 # ==============================================================================
@@ -678,107 +636,6 @@ def train_features_batch(
 
 
 @torch.no_grad()
-def eval_statements(
-    pos_statements: list[str],
-    neg_statements: list[str],
-    feature_indices: list[int],
-    model: AutoModelForCausalLM,
-    submodule: torch.nn.Module,
-    sae: jumprelu_sae.JumpReluSAE,
-    tokenizer: PreTrainedTokenizer,
-) -> tuple[list[dict], list[dict]]:
-    assert len(pos_statements) == len(neg_statements) == len(feature_indices)
-
-    # TODO: shrink SAE to only the features we're interested in for reduced memory usage
-    pos_activations_BLF = get_feature_activations(
-        model=model,
-        tokenizer=tokenizer,
-        submodule=submodule,
-        sae=sae,
-        input_strs=pos_statements,
-    )
-
-    neg_activations_BLF = get_feature_activations(
-        model=model,
-        tokenizer=tokenizer,
-        submodule=submodule,
-        sae=sae,
-        input_strs=neg_statements,
-    )
-
-    all_sentence_data = []
-    all_sentence_metrics = []
-
-    for i in range(len(pos_statements)):
-        feature_idx = feature_indices[i]
-
-        pos_activations_L = pos_activations_BLF[i, :, feature_idx]
-        neg_activations_L = neg_activations_BLF[i, :, feature_idx]
-
-        sentence_distance = lev.normalized_distance(
-            pos_statements[i], neg_statements[i]
-        )
-
-        original_max_activation = pos_activations_L.max().item()
-        rewritten_max_activation = neg_activations_L.max().item()
-        original_mean_activation = pos_activations_L.mean().item()
-        rewritten_mean_activation = neg_activations_L.mean().item()
-
-        max_activation_ratio = rewritten_max_activation / (
-            original_max_activation + 1e-6
-        )
-        mean_activation_ratio = rewritten_mean_activation / (
-            original_mean_activation + 1e-6
-        )
-
-        max_activation_ratio = max(max_activation_ratio, 0.0)
-        mean_activation_ratio = max(mean_activation_ratio, 0.0)
-
-        max_activation_ratio = min(max_activation_ratio, 1.0)
-        mean_activation_ratio = min(mean_activation_ratio, 1.0)
-
-        format_correct = 1.0
-        if pos_statements[i] == "" and neg_statements[i] == "":
-            format_correct = 0.0
-
-        max_activation_nonzero = 0.0
-        if original_max_activation > 0.0 and format_correct == 1.0:
-            max_activation_nonzero = 1.0
-
-        success_max_activation_ratio = 1.0
-        success_mean_activation_ratio = 1.0
-
-        if format_correct == 1.0 and max_activation_nonzero == 1.0:
-            success_max_activation_ratio = max_activation_ratio
-            success_mean_activation_ratio = mean_activation_ratio
-
-        sentence_data = {
-            "sentence_index": 0,
-            "original_sentence": pos_statements[i],
-            "rewritten_sentence": neg_statements[i],
-        }
-
-        sentence_metrics = {
-            "original_max_activation": original_max_activation,
-            "rewritten_max_activation": rewritten_max_activation,
-            "original_mean_activation": original_mean_activation,
-            "rewritten_mean_activation": rewritten_mean_activation,
-            "max_activation_ratio": max_activation_ratio,
-            "mean_activation_ratio": mean_activation_ratio,
-            "sentence_distance": sentence_distance,
-            "format_correct": format_correct,
-            "max_activation_nonzero": max_activation_nonzero,
-            "success_max_activation_ratio": success_max_activation_ratio,
-            "success_mean_activation_ratio": success_mean_activation_ratio,
-        }
-
-        all_sentence_data.append(sentence_data)
-        all_sentence_metrics.append(sentence_metrics)
-
-    return all_sentence_data, all_sentence_metrics
-
-
-@torch.no_grad()
 def eval_features_batch(
     cfg: SelfInterpTrainingConfig,
     eval_batch: dict,
@@ -831,7 +688,7 @@ def eval_features_batch(
             neg_statements.append("")
             explanations.append("")
 
-    all_sentence_data, all_sentence_metrics = eval_statements(
+    all_sentence_data, all_sentence_metrics = introspect_utils.eval_statements(
         pos_statements=pos_statements,
         neg_statements=neg_statements,
         feature_indices=eval_batch["feature_indices"],
@@ -1013,7 +870,7 @@ def main():
     cfg.eval_set_size = 100
     cfg.steering_coefficient = 2.0
     cfg.batch_size = 3
-    cfg.training_data_filename = "contrastive_rewriting_results_10k.pkl"
+    cfg.training_data_filename = "contrastive_rewriting_results_1k.pkl"
     verbose = True
 
     # %%
@@ -1101,7 +958,7 @@ def main():
     print(f"training data: {len(training_data)}, eval data: {len(eval_data)}")
 
     temp_training_data = training_data[:]
-    temp_eval_data = eval_data[:]
+    temp_eval_data = eval_data[:10]
 
     train_model(
         cfg,

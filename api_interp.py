@@ -17,14 +17,13 @@ import pickle
 import asyncio
 import re
 from rapidfuzz.distance import Levenshtein as lev
+from tqdm import tqdm
 
-# Make sure you have installed the necessary packages:
-# pip install torch transformers jaxtyping einops transformers_stream_generator safetensors sentencepiece accelerate rapidfuzz
-# pip install git+https://github.com/google-deepmind/interp_tools.git
 import interp_tools.saes.jumprelu_sae as jumprelu_sae
 import interp_tools.model_utils as model_utils
 import interp_tools.api_utils.shared as shared
 import interp_tools.api_utils.api_caller as api_caller
+import interp_tools.introspect_utils as introspect_utils
 
 
 # ==============================================================================
@@ -40,7 +39,7 @@ class Config:
     # --- SAE (Sparse Autoencoder) Settings ---
     sae_repo_id: str = "google/gemma-scope-9b-it-res"
     sae_layer: int = 9
-    sae_width: int = 16  # For loading the correct max acts file
+    sae_width: int = 131  # For loading the correct max acts file
     layer_percent: int = 25  # For loading the correct max acts file
     context_length: int = 32
 
@@ -55,19 +54,26 @@ class Config:
     results_filename: str = "contrastive_rewriting_results.pkl"
 
     # --- API and Generation Settings ---
-    api_model_name: str = "gpt-4o"
+    api_model_name: str = "gpt-4.1-mini"
     # Use a default_factory for mutable types like dicts
     generation_kwargs: Dict[str, Any] = field(
         default_factory=lambda: {
             "temperature": 1.0,
             "max_tokens": 2000,
-            "max_par": 100,  # Max parallel requests
+            "max_par": 200,  # Max parallel requests
         }
     )
 
     def __post_init__(self):
         """Called after the dataclass is initialized."""
-        self.sae_filename = f"layer_{self.sae_layer}/width_16k/average_l0_88/params.npz"
+        if self.sae_width == 16:
+            self.sae_filename = (
+                f"layer_{self.sae_layer}/width_16k/average_l0_88/params.npz"
+            )
+        elif self.sae_width == 131:
+            self.sae_filename = f"layer_9/width_131k/average_l0_121/params.npz"
+        else:
+            raise ValueError(f"Unknown SAE width: {self.sae_width}")
 
 
 # ==============================================================================
@@ -312,71 +318,29 @@ def parse_llm_response(
     return explanation, planned_edits, rewritten_sentences
 
 
-# ==============================================================================
-# 3. MAIN EXPERIMENT LOGIC
-# ==============================================================================
-async def main(cfg: Config):
-    """Main function to run the contrastive rewriting experiment."""
-    print("--- Starting Contrastive Rewriting Experiment ---")
-    print(f"Configuration: {asdict(cfg)}")
+def parallel_eval(
+    cfg: Config,
+    feature_indices: list[int],
+    all_prompts: list[str],
+    api_responses: list[str],
+    acts_data: dict[str, torch.Tensor],
+    model: AutoModelForCausalLM,
+    tokenizer: PreTrainedTokenizer,
+    submodule: torch.nn.Module,
+    sae: jumprelu_sae.JumpReluSAE,
+    batch_size: int,
+) -> list[dict]:
+    sentences_to_process = {
+        "original": [],
+        "rewritten": [],
+        "feature_indices": [],
+        "reconstruction_info": [],  # To map results back to the correct feature/sentence
+    }
 
-    # 1. Setup: Seeding, loading models, data, and API
-    random.seed(cfg.random_seed)
-    torch.manual_seed(cfg.random_seed)
-    dtype = torch.bfloat16
-    device = torch.device("cuda")
+    feature_results = []
 
-    model, tokenizer, sae = load_sae_and_model(cfg, device, dtype)
-    submodule = model_utils.get_submodule(model, cfg.sae_layer)
-    acts_data = load_acts(
-        cfg.model_name,
-        cfg.sae_layer,
-        cfg.sae_width,
-        cfg.layer_percent,
-        cfg.context_length,
-    )
-    caller = api_caller.get_openai_caller("cached_api_calls")
-
-    # 2. Feature Selection and Prompt Generation
-    num_features_available = acts_data["max_acts"].shape[0]
-    feature_indices = random.sample(
-        range(num_features_available), cfg.num_features_to_run
-    )
-    print(f"\nSelected {len(feature_indices)} random features to analyze.")
-
-    all_prompts = []
-    print("Generating prompts for each feature...")
-    for feature_idx in feature_indices:
-        feature_acts = acts_data["max_acts"][
-            feature_idx, : cfg.num_sentences_per_feature
-        ]
-        feature_tokens = acts_data["max_tokens"][
-            feature_idx, : cfg.num_sentences_per_feature
-        ]
-        prompt = make_contrastive_prompt(feature_acts, feature_tokens, tokenizer)
-        all_prompts.append(prompt)
-
-    # 3. Parallel API Calls
-    print(
-        f"Sending {len(all_prompts)} prompts to {cfg.api_model_name} for rewriting..."
-    )
-    chat_prompts = build_prompts(all_prompts)
-    try:
-        api_responses = await api_caller.run_api_model(
-            cfg.api_model_name,
-            chat_prompts,
-            caller,
-            temperature=cfg.generation_kwargs["temperature"],
-            max_tokens=cfg.generation_kwargs["max_tokens"],
-            max_par=cfg.generation_kwargs["max_par"],
-        )
-    finally:
-        caller.client.close()
-    print("Received all API responses.")
-
-    # 4. Process Results and Calculate Activations
-    print("Processing responses and calculating activations...")
-    all_results_data = []
+    num_valid_sentences = 0
+    num_invalid_sentences = 0
 
     for i, feature_idx in enumerate(feature_indices):
         api_prompt = all_prompts[i]
@@ -396,10 +360,12 @@ async def main(cfg: Config):
             "explanation": explanation,
             "planned_edits": planned_edits,
             "sentence_data": [],
+            "sentence_metrics": [],
         }
+        feature_results.append(feature_result)
 
-        # TODO: do in parallel
         for sent_idx in range(cfg.num_sentences_per_feature):
+            # [1:] to skip bos token
             original_sentence = "".join(
                 list_decode(feature_tokens[sent_idx][1:], tokenizer)[0]
             )
@@ -409,50 +375,135 @@ async def main(cfg: Config):
                 print(
                     f"  - WARN: Could not parse rewritten sentence {sent_idx} for feature {feature_idx}."
                 )
-                continue
+                original_sentence = ""
+                rewritten_sentence = ""
+                num_invalid_sentences += 1
+            else:
+                num_valid_sentences += 1
 
-            # Calculate activations
-            with torch.no_grad():
-                original_acts = get_feature_activations(
-                    model,
-                    tokenizer,
-                    submodule,
-                    sae,
-                    original_sentence,
-                    feature_idx,
-                    use_chat_template=False,
-                    ignore_bos=True,
-                )
-                rewritten_acts = get_feature_activations(
-                    model,
-                    tokenizer,
-                    submodule,
-                    sae,
-                    rewritten_sentence,
-                    feature_idx,
-                    use_chat_template=False,
-                    ignore_bos=True,
-                )
+            # Add data to our batch lists
+            sentences_to_process["original"].append(original_sentence)
+            sentences_to_process["rewritten"].append(rewritten_sentence)
+            sentences_to_process["feature_indices"].append(feature_idx)
+            # Store the location: (index in all_results_data, sentence_index)
+            sentences_to_process["reconstruction_info"].append((i, sent_idx))
 
-            dist = sentence_distance(original_sentence, rewritten_sentence)
+    print(
+        f"Found {num_valid_sentences} valid sentences and {num_invalid_sentences} invalid sentences."
+    )
 
-            feature_result["sentence_data"].append(
-                {
-                    "sentence_index": sent_idx,
-                    "original_sentence": original_sentence,
-                    "rewritten_sentence": rewritten_sentence,
-                    "original_activations": original_acts.cpu(),
-                    "rewritten_activations": rewritten_acts.cpu(),
-                    "original_max_activation": original_acts.max().item(),
-                    "rewritten_max_activation": rewritten_acts.max().item(),
-                    "original_mean_activation": original_acts.mean().item(),
-                    "rewritten_mean_activation": rewritten_acts.mean().item(),
-                    "sentence_distance": dist,
-                }
+    for i in tqdm(
+        range(0, len(sentences_to_process["original"]), batch_size),
+        desc="Evaluating sentence activations",
+    ):
+        pos_statements = sentences_to_process["original"][i : i + batch_size]
+        neg_statements = sentences_to_process["rewritten"][i : i + batch_size]
+        feature_indices = sentences_to_process["feature_indices"][i : i + batch_size]
+        reconstruction_info = sentences_to_process["reconstruction_info"][
+            i : i + batch_size
+        ]
+        all_sentence_data, all_sentence_metrics = introspect_utils.eval_statements(
+            pos_statements,
+            neg_statements,
+            feature_indices,
+            model,
+            submodule,
+            sae,
+            tokenizer,
+        )
+
+        for j, (feature_results_idx, sent_idx) in enumerate(reconstruction_info):
+            feature_results[feature_results_idx]["sentence_data"].append(
+                all_sentence_data[j]
+            )
+            feature_results[feature_results_idx]["sentence_metrics"].append(
+                all_sentence_metrics[j]
             )
 
-        all_results_data.append(feature_result)
-        print(f"  - Processed feature {feature_idx} ({i + 1}/{len(feature_indices)})")
+    return feature_results
+
+
+# ==============================================================================
+# 3. MAIN EXPERIMENT LOGIC
+# ==============================================================================
+async def main(cfg: Config):
+    """Main function to run the contrastive rewriting experiment."""
+    print("--- Starting Contrastive Rewriting Experiment ---")
+    print(f"Configuration: {asdict(cfg)}")
+
+    # 1. Setup: Seeding, loading models, data, and API
+    random.seed(cfg.random_seed)
+    torch.manual_seed(cfg.random_seed)
+    dtype = torch.bfloat16
+    device = torch.device("cuda")
+
+    acts_data = load_acts(
+        cfg.model_name,
+        cfg.sae_layer,
+        cfg.sae_width,
+        cfg.layer_percent,
+        cfg.context_length,
+    )
+    caller = api_caller.get_openai_caller("cached_api_calls")
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
+
+    # 2. Feature Selection and Prompt Generation
+    num_features_available = acts_data["max_acts"].shape[0]
+    feature_indices = random.sample(
+        range(num_features_available),
+        min(cfg.num_features_to_run, num_features_available),
+    )
+    print(f"\nSelected {len(feature_indices)} random features to analyze.")
+
+    all_prompts = []
+    print("Generating prompts for each feature...")
+    for feature_idx in feature_indices:
+        feature_acts = acts_data["max_acts"][
+            feature_idx, : cfg.num_sentences_per_feature
+        ]
+        feature_tokens = acts_data["max_tokens"][
+            feature_idx, : cfg.num_sentences_per_feature
+        ]
+        prompt = make_contrastive_prompt(feature_acts, feature_tokens, tokenizer)
+        all_prompts.append(prompt)
+
+    # 3. Parallel API Calls
+    print(
+        f"Sending {len(all_prompts)} prompts to {cfg.api_model_name} for rewriting..."
+    )
+
+    total_chars = sum(len(prompt) for prompt in all_prompts)
+    print(f"Total characters: {total_chars}")
+
+    chat_prompts = build_prompts(all_prompts)
+    try:
+        api_responses = await api_caller.run_api_model(
+            cfg.api_model_name,
+            chat_prompts,
+            caller,
+            temperature=cfg.generation_kwargs["temperature"],
+            max_tokens=cfg.generation_kwargs["max_tokens"],
+            max_par=cfg.generation_kwargs["max_par"],
+        )
+    finally:
+        caller.client.close()
+    print("Received all API responses.")
+
+    model, tokenizer, sae = load_sae_and_model(cfg, device, dtype)
+    submodule = model_utils.get_submodule(model, cfg.sae_layer)
+
+    all_results_data = parallel_eval(
+        cfg,
+        feature_indices,
+        all_prompts,
+        api_responses,
+        acts_data,
+        model,
+        tokenizer,
+        submodule,
+        sae,
+        batch_size=50,
+    )
 
     # 5. Save Results
     print(f"\nSaving all results to {cfg.results_filename}...")
@@ -470,6 +521,6 @@ if __name__ == "__main__":
     # Ensure you are in an environment that supports asyncio, like a Jupyter notebook
     # or a standard Python script.
     cfg = Config()
-    cfg.num_features_to_run = 1000
+    cfg.num_features_to_run = 200000
     # This is the standard way to run an async function from a sync context.
     asyncio.run(main(cfg))
