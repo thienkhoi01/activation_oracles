@@ -309,11 +309,30 @@ def construct_eval_dataset(
     api_data: dict,
     sae: jumprelu_sae.JumpReluSAE,
     tokenizer: PreTrainedTokenizer,
+    few_shot_examples: list[dict] | None = None,
     prefill_original_sentences: bool = False,
 ) -> list[dict]:
     """Every prompt is exactly the same - the only difference is the steering vectors."""
+    if few_shot_examples is None:
+        few_shot_examples = []
+    few_shot_indices = [example["feature_idx"] for example in few_shot_examples]
 
     input_messages = [{"role": "user", "content": input_prompt}]
+
+    for example in few_shot_examples:
+        pos_sent = example["original_sentence"]
+        neg_sent = example["rewritten_sentence"]
+        explanation = example["explanation"]
+
+        input_messages.extend(
+            [
+                {
+                    "role": "assistant",
+                    "content": f"Positive example: {pos_sent}\n\nNegative example: {neg_sent}\n\nExplanation: {explanation}\n\n<END_OF_EXAMPLE>",
+                },
+                {"role": "user", "content": input_prompt},
+            ]
+        )
 
     input_prompt_ids: list[int] = tokenizer.apply_chat_template(
         input_messages,
@@ -350,13 +369,12 @@ def construct_eval_dataset(
 
             target_response = f"Positive example: {sentence_data['original_sentence']}\n\nNegative example:"
 
-            input_messages = [
-                {"role": "user", "content": input_prompt},
+            new_input_messages = input_messages + [
                 {"role": "assistant", "content": target_response},
             ]
 
             input_prompt_ids: list[int] = tokenizer.apply_chat_template(
-                input_messages,
+                new_input_messages,
                 tokenize=True,
                 add_generation_prompt=False,
                 continue_final_message=True,
@@ -368,8 +386,7 @@ def construct_eval_dataset(
             labels = input_prompt_ids.copy()
 
         # 2. Prepare feature vectors for steering
-        # We use decoder weights (W_dec) as they map from the feature space back to the residual stream.
-        all_feature_indices = [target_feature_idx]
+        all_feature_indices = few_shot_indices + [target_feature_idx]
 
         if cfg.use_decoder_vectors:
             feature_vectors = [sae.W_dec[i].clone() for i in all_feature_indices]
@@ -381,7 +398,9 @@ def construct_eval_dataset(
             if input_prompt_ids[i] == x_token_id:
                 positions.append(i)
 
-        assert len(positions) == 1, "Expected exactly one X token"
+        assert len(positions) == len(all_feature_indices), (
+            "Expected exactly one X token for each feature"
+        )
 
         if first_position is None:
             first_position = positions[0]

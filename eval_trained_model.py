@@ -40,20 +40,62 @@ import self_training
 # 2. UTILITY FUNCTIONS
 # ==============================================================================
 
+def collect_few_shot_examples(results: dict, max_examples: int = 5) -> list[dict]:
+    examples = []
+
+    for i, feature_result in enumerate(results["results"]):
+        all_sentence_data = feature_result["sentence_data"]
+        all_sentence_metrics = feature_result["sentence_metrics"]
+        for i in range(len(all_sentence_data)):
+            sentence_data = all_sentence_data[i]
+            sentence_metrics = all_sentence_metrics[i]
+
+            if sentence_metrics["original_max_activation"] < 1.0:
+                continue
+
+            max_act_ratio = (
+                sentence_metrics["rewritten_max_activation"]
+                / (sentence_metrics["original_max_activation"])
+            )
+
+            if max_act_ratio < 0.1 and sentence_metrics["sentence_distance"] < 0.1:
+                example = {
+                    "original_sentence": sentence_data["original_sentence"],
+                    "rewritten_sentence": sentence_data["rewritten_sentence"],
+                    "explanation": feature_result["explanation"],
+                    "feature_idx": feature_result["feature_idx"],
+                }
+
+                examples.append(example)
+
+                break
+
+        if len(examples) >= max_examples:
+            break
+
+    return examples
 
 """Main script logic."""
 cfg = SelfInterpTrainingConfig()
 
-cfg.eval_set_size = 200
+cfg.eval_set_size = 64
 cfg.steering_coefficient = 2.0
 cfg.train_batch_size = 4
-cfg.eval_batch_size = 256
+cfg.eval_batch_size = 32
 cfg.training_data_filename = (
     "contrastive_rewriting_results_google_gemma-2-9b-it_num_features_200000.pkl"
 )
 verbose = True
 cfg.use_decoder_vectors = False
 cfg.prefill_original_sentences = True
+
+use_few_shot = False
+
+if use_few_shot:
+    cfg.use_lora = False
+else:
+    cfg.use_lora = True
+
 
 torch.set_grad_enabled(False)
 
@@ -68,6 +110,8 @@ api_data_filename = cfg.training_data_filename
 
 with open(api_data_filename, "rb") as f:
     api_data = pickle.load(f)
+
+# %%
 
 cfg.sae_width = api_data["config"]["sae_width"]
 cfg.sae_layer = api_data["config"]["sae_layer"]
@@ -87,16 +131,35 @@ tokenizer.padding_side = "left"
 
 # %%
 
-lora_path = "checkpoints_encoder_gemma/step_94000"
-# lora_path = "checkpoints_decoder_gemma/step_84000"
-run_name = lora_path
-model.load_adapter(
-    lora_path,
-    adapter_name=run_name,
-    is_trainable=False,
-    low_cpu_mem_usage=True,  # 4x speedup from this
-)
-model.set_adapter(run_name)
+print(api_data["results"][0].keys())
+print(api_data["results"][0]["sentence_data"][0].keys())
+
+# %%
+
+if use_few_shot:
+    few_shot_examples = collect_few_shot_examples(api_data, max_examples=5)
+    for example in few_shot_examples:
+        print(example["feature_idx"])
+        print(f"\nOriginal sentence: {example['original_sentence']}")
+        print(f"\nRewritten sentence: {example['rewritten_sentence']}")
+        print(f"\nExplanation: {example['explanation']}")
+        print("-" * 100)
+else:
+    few_shot_examples = []
+
+# %%
+
+if cfg.use_lora:
+    lora_path = "checkpoints_encoder_gemma/step_94000"
+    # lora_path = "checkpoints_decoder_gemma/step_84000"
+    run_name = lora_path
+    model.load_adapter(
+        lora_path,
+        adapter_name=run_name,
+        is_trainable=False,
+        low_cpu_mem_usage=True,  # 4x speedup from this
+    )
+    model.set_adapter(run_name)
 
 # %%
 max_activation = 0
@@ -127,6 +190,9 @@ for example in training_examples:
 test_features = set()
 
 for example in api_data["results"]:
+    if use_few_shot and example["feature_idx"] in few_shot_examples:
+        continue
+
     if example["feature_idx"] not in train_features:
         test_features.add(example["feature_idx"])
 
@@ -139,6 +205,9 @@ assert len(cfg.eval_features) == cfg.eval_set_size
 
 train_eval_prompt = self_training.build_training_prompt()
 
+print(train_eval_prompt)
+# %%
+
 eval_data = self_training.construct_eval_dataset(
     cfg,
     cfg.eval_set_size,
@@ -147,12 +216,32 @@ eval_data = self_training.construct_eval_dataset(
     api_data,
     sae,
     tokenizer,
+    few_shot_examples,
     prefill_original_sentences=cfg.prefill_original_sentences,
 )
 
+
 # %%
 
-print(tokenizer.decode(eval_data[0]["input_ids"], skip_special_tokens=False))
+temp_e_batch = eval_data[:10]
+
+temp_e_batch = self_training.construct_batch(temp_e_batch, tokenizer, device)
+
+print(tokenizer.decode(temp_e_batch["input_ids"][0], skip_special_tokens=False))
+
+# %%
+
+print(temp_e_batch.keys())
+print(temp_e_batch["steering_vectors"][0][0].shape)
+print(len(temp_e_batch["steering_vectors"]))
+print(len(temp_e_batch["steering_vectors"][0]))
+print(temp_e_batch["feature_indices"][0])
+print(temp_e_batch["feature_indices"][1])
+
+# %%
+
+print((temp_e_batch["steering_vectors"][0][0] - temp_e_batch["steering_vectors"][1][0]).sum())
+print((temp_e_batch["steering_vectors"][0][0] - temp_e_batch["steering_vectors"][0][1]).sum())
 
 # %%
 
