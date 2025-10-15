@@ -1,7 +1,7 @@
 [project]
-name = "interp_tools"
+name = "nl_probes"
 version = "0.0.1"
-description = "Adam's interp tools"
+description = "nl_probes"
 requires-python = ">=3.10"
 readme = "README.md"
 dependencies = [
@@ -34,3 +34,6 @@ dependencies = [
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["nl_probes", "nl_probes.*"]
