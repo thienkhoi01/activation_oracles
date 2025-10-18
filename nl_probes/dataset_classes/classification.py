@@ -34,7 +34,6 @@ from nl_probes.utils.eval import run_evaluation
 class ClassificationDatasetConfig(BaseDatasetConfig):
     classification_dataset_name: str
     num_qa_per_sample: int = 3
-    batch_size: int = 128
     min_end_offset: int = -3
     max_end_offset: int = -5
     max_window_size: int = 20
@@ -87,7 +86,7 @@ class ClassificationDatasetLoader(ActDatasetLoader):
                 datapoints,
                 tokenizer,
                 self.dataset_config.model_name,
-                self.dataset_params.batch_size,
+                self.dataset_config.batch_size,
                 self.act_layers,
                 min_end_offset=self.dataset_params.min_end_offset,
                 max_end_offset=self.dataset_params.max_end_offset,

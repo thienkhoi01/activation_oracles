@@ -22,7 +22,6 @@ from nl_probes.utils.dataset_utils import (
 
 @dataclass
 class LatentQADatasetConfig(BaseDatasetConfig):
-    batch_size: int = 128
     max_window_size: int = 3
     min_window_size: int = 1
     min_end_offset: int = -1
@@ -47,9 +46,9 @@ class LatentQADatasetLoader(ActDatasetLoader):
         assert self.dataset_config.splits == ["train"], "Past lens dataset only supports train split right now"
         assert self.dataset_config.num_test == 0, "Past lens dataset only supports train split right now"
 
-        if self.dataset_config.num_train < self.dataset_params.batch_size:
+        if self.dataset_config.num_train < self.dataset_config.batch_size:
             raise ValueError(
-                f"num_train {self.dataset_config.num_train} must be greater than or equal to batch_size {self.dataset_params.batch_size}"
+                f"num_train {self.dataset_config.num_train} must be greater than or equal to batch_size {self.dataset_config.batch_size}"
             )
 
     def create_dataset(self) -> None:

@@ -23,12 +23,13 @@ class DatasetLoaderConfig:
     model_name: str
     layer_percents: list[int]
     save_acts: bool
+    batch_size: int
     dataset_name: str = ""
     dataset_folder: str = "sft_training_data"
     seed: int = 42
 
 
-def _config_hash(cfg: DatasetLoaderConfig, split: str, exclude: tuple[str, ...] = ("dataset_folder",)) -> str:
+def _config_hash(cfg: DatasetLoaderConfig, split: str, exclude: tuple[str, ...] = ("batch_size",)) -> str:
     """
     Stable short hash over the full config + split.
     Excludes path-like fields so moving folders does not change the filename.
