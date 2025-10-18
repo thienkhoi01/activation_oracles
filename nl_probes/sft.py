@@ -961,11 +961,6 @@ if __name__ == "__main__":
         if hyperparam_override["load_lora_path"] is not None:
             assert os.path.exists(hyperparam_override["load_lora_path"]), f"{hyperparam_override['load_lora_path']}"
 
-        if "latentqa" in hyperparam_override["wandb_suffix"]:
-            train_batch_size = 4
-        else:
-            train_batch_size = 16
-
         cfg = SelfInterpTrainingConfig(
             model_name=model_name,
             hook_onto_layer=hook_layer,
