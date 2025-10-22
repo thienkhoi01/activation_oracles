@@ -44,6 +44,9 @@ VERBOSE = False
 # Device selection
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+TARGET_LORA_PATH = "model_lora/Qwen3-8B-shuffled"
+
 if MODEL_NAME == "Qwen/Qwen3-32B":
     INVESTIGATOR_LORA_PATHS = [
         "adamkarvonen/checkpoints_act_pretrain_cls_latentqa_mix_posttrain_Qwen3-32B",
@@ -51,21 +54,17 @@ if MODEL_NAME == "Qwen/Qwen3-32B":
         "adamkarvonen/checkpoints_act_pretrain_cls_only_posttrain_Qwen3-32B",
         "adamkarvonen/checkpoints_latentqa_only_Qwen3-32B",
     ]
-    raise ValueError("fix this")
-    ACTIVE_LORA_PATH_TEMPLATE: Optional[str] = "/root/sae_introspect/model_lora/Qwen3-32B-taboo-{word}"
 elif MODEL_NAME == "Qwen/Qwen3-8B":
     INVESTIGATOR_LORA_PATHS = [
         # "adamkarvonen/checkpoints_all_single_and_multi_pretrain_Qwen3-8B",
-        "adamkarvonen/checkpoints_act_cls_pretrain_mix_Qwen3-8B",
+        # "adamkarvonen/checkpoints_act_cls_pretrain_mix_Qwen3-8B",
         "adamkarvonen/checkpoints_cls_only_Qwen3-8B",
-        # "adamkarvonen/checkpoints_all_single_and_multi_pretrain_cls_posttrain_Qwen3-8B",
+        "adamkarvonen/checkpoints_all_single_and_multi_pretrain_cls_posttrain_Qwen3-8B",
         "adamkarvonen/checkpoints_latentqa_only_Qwen3-8B",
-        # "adamkarvonen/checkpoints_all_single_and_multi_pretrain_cls_latentqa_posttrain_Qwen3-8B",
+        "adamkarvonen/checkpoints_all_single_and_multi_pretrain_cls_latentqa_posttrain_Qwen3-8B",
         "adamkarvonen/checkpoints_act_cls_latentqa_sae_pretrain_mix_Qwen3-8B",
+        "adamkarvonen/checkpoints_act_latentqa_pretrain_mix_Qwen3-8B",
     ]
-    ACTIVE_LORA_PATH_TEMPLATE: Optional[str] = (
-        "/root/sae_introspect/model_lora_personaqa/Qwen3-8B-shuffled-{name}_10_epochs"
-    )
 else:
     raise ValueError(f"Unsupported MODEL_NAME: {MODEL_NAME}")
 
@@ -85,7 +84,7 @@ GENERATION_KWARGS = {"do_sample": False, "temperature": 1.0, "max_new_tokens": 4
 ADD_GENERATION_PROMPT = True
 ENABLE_THINKING = False
 
-EXPERIMENTS_DIR: str = "experiments/personaqa_single_eval_results"
+EXPERIMENTS_DIR: str = "experiments/personaqa_all_persona_eval_results"
 OUTPUT_JSON_DIR: str = f"{EXPERIMENTS_DIR}/{model_name_str}_yes_no"
 
 os.makedirs(EXPERIMENTS_DIR, exist_ok=True)
@@ -113,18 +112,12 @@ persona_data.sort(key=lambda x: x["name"])
 if MAX_PERSONAS is not None:
     persona_data = persona_data[:MAX_PERSONAS]
 
-for persona in persona_data:
-    temp_lora_path = ACTIVE_LORA_PATH_TEMPLATE.format(name=sanitize_for_filename(persona["name"]))
-    if not os.path.exists(temp_lora_path):
-        raise FileNotFoundError(f"Could not find LoRA path: {temp_lora_path}")
-
 PREFIX = "Answer with 'Yes' or 'No' only. "
 
 CONTEXT_PROMPTS: list[str] = [
     # "Name: {name}. Prompt Template: What can you tell me about {name}?",
     # "What can you tell me about {name}?",
     "My name is {name}.",
-    # "What is the {prompt_type} of {name}?",
 ]
 
 
@@ -147,25 +140,6 @@ VERBALIZER_PROMPTS: list[str] = [
     "Is this person's favorite sport {favorite_sport}?",
     "Is this person's favorite boardgame {favorite_boardgame}?",
 ]
-
-
-# VERBALIZER_PROMPTS: list[str] = [
-#     "Is this country {country} related to this text?",
-#     "Is this food {favorite_food} related to this text?",
-#     "Is this drink {favorite_drink} related to this text?",
-#     "Is this music genre {favorite_music_genre} related to this text?",
-#     "Is this sport {favorite_sport} related to this text?",
-#     "Is this boardgame {favorite_boardgame} related to this text?",
-# ]
-
-# VERBALIZER_PROMPTS = [
-#     "Is the person in this text from the country {country}?",
-#     "Does the person in this text have the favorite food {favorite_food}?",
-#     "Does the person in this text have the favorite drink {favorite_drink}?",
-#     "Does the person in this text have the favorite music genre {favorite_music_genre}?",
-#     "Does the person in this text have the favorite sport {favorite_sport}?",
-#     "Does the person in this text have the favorite boardgame {favorite_boardgame}?",
-# ]
 
 
 PT_TO_PROMPT: dict[str, str] = {k: v for k, v in zip(PROMPT_TYPES, VERBALIZER_PROMPTS)}
@@ -374,6 +348,16 @@ total_iterations = len(INVESTIGATOR_LORA_PATHS) * len(persona_data) * len(CONTEX
 
 pbar = tqdm(total=total_iterations, desc="Overall Progress")
 
+
+# Load ACTIVE_LORA_PATH adapter if specified
+if TARGET_LORA_PATH not in model.peft_config:
+    model.load_adapter(
+        TARGET_LORA_PATH,
+        adapter_name=TARGET_LORA_PATH,
+        is_trainable=False,
+        low_cpu_mem_usage=True,
+    )
+
 for INVESTIGATOR_LORA_PATH in INVESTIGATOR_LORA_PATHS:
     # Load ACTIVE_LORA_PATH adapter if specified
     if INVESTIGATOR_LORA_PATH not in model.peft_config:
@@ -408,16 +392,6 @@ for INVESTIGATOR_LORA_PATH in INVESTIGATOR_LORA_PATHS:
 
     for persona in persona_data:
         name = persona["name"]
-        active_lora_path = ACTIVE_LORA_PATH_TEMPLATE.format(name=sanitize_for_filename(name))
-
-        # Load ACTIVE_LORA_PATH adapter if specified
-        if active_lora_path not in model.peft_config:
-            model.load_adapter(
-                active_lora_path,
-                adapter_name=active_lora_path,
-                is_trainable=False,
-                low_cpu_mem_usage=True,
-            )
 
         for context_prompt, prompt_type, correct_word in itertools.product(
             CONTEXT_PROMPTS, PROMPT_TYPES, [True, False]
@@ -439,11 +413,11 @@ for INVESTIGATOR_LORA_PATH in INVESTIGATOR_LORA_PATHS:
             context_input_ids = inputs_BL["input_ids"][0, :].tolist()
 
             # Submodules for the layers we will probe
-            model.set_adapter(active_lora_path)
+            model.set_adapter(TARGET_LORA_PATH)
             submodules = {layer: get_hf_submodule(model, layer) for layer in ACT_LAYERS}
 
             # Collect activations for this persona
-            if active_lora_path is None:
+            if TARGET_LORA_PATH is None:
                 orig_acts = collect_activations_without_lora(model, submodules, inputs_BL)
                 act_types = {"orig": orig_acts}
             else:
@@ -535,8 +509,6 @@ for INVESTIGATOR_LORA_PATH in INVESTIGATOR_LORA_PATHS:
 
             pbar.set_postfix({"inv": INVESTIGATOR_LORA_PATH.split("/")[-1][:40], "name": name})
             pbar.update(1)
-
-        model.delete_adapter(active_lora_path)
 
     # Optionally save to JSON
     if OUTPUT_JSON_TEMPLATE is not None:

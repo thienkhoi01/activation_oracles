@@ -19,7 +19,7 @@ os.makedirs(CLS_IMAGE_FOLDER, exist_ok=True)
 
 
 SEQUENCE = False
-SEQUENCE = True
+# SEQUENCE = True
 
 sequence_str = "sequence" if SEQUENCE else "token"
 
@@ -52,6 +52,7 @@ CUSTOM_LABELS = {
     # "checkpoints_all_single_and_multi_pretrain_Qwen3-8B": "SAE Pretrain",
     "checkpoints_act_cls_latentqa_sae_pretrain_mix_Qwen3-8B": "Past Lens + SAE + Classification + LatentQA Pretrain Mix",
     "checkpoints_act_cls_pretrain_mix_Qwen3-8B": "Past Lens + Classification Pretrain Mix",
+    "checkpoints_act_latentqa_pretrain_mix_Qwen3-8B": "Past Lens + LatentQA Pretrain Mix",
 }
 
 def parse_answer(s: str) -> str:
@@ -85,7 +86,8 @@ def calculate_accuracy(record):
         return num_correct / total if total > 0 else 0
     else:
         ground_truth = record["ground_truth"].lower()
-        responses = record["token_responses"][-11:-10]
+        idx = -10
+        responses = record["token_responses"][idx:idx + 1]
         # responses = record["token_responses"][-9:]
         # responses = record["token_responses"][-12:]
 
@@ -203,6 +205,15 @@ def plot_results(results_by_lora):
     ax.set_ylim(0, 1)
     ax.grid(axis="y", alpha=0.3)
 
+    # Add horizontal baseline line for zero-shot reference
+    baseline_line = ax.axhline(
+        y=0.51,
+        color="black",
+        linestyle="--",
+        linewidth=2,
+        label="Zero-shot Skyline (0.51)",
+    )
+
     # Add value labels on bars
     for i, (bar, acc, err) in enumerate(zip(bars, mean_accuracies, error_bars)):
         height = bar.get_height()
@@ -223,10 +234,20 @@ def plot_results(results_by_lora):
         else:
             legend_labels.append(name)
 
-    ax.legend(bars, legend_labels, loc="upper center", bbox_to_anchor=(0.5, -0.15), fontsize=10, ncol=2, frameon=False)
+    legend_handles = list(bars) + [baseline_line]
+    legend_labels = legend_labels + [baseline_line.get_label()]
+    ax.legend(
+        legend_handles,
+        legend_labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.18),
+        fontsize=10,
+        ncol=2,
+        frameon=False,
+    )
 
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.2)  # Make room for legend below
+    plt.subplots_adjust(bottom=0.22)  # Make room for legend below
     plt.savefig(OUTPUT_PATH, dpi=300, bbox_inches="tight")
     print(f"\nPlot saved as '{OUTPUT_PATH}'")
     plt.show()

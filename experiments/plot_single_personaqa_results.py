@@ -6,8 +6,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Configuration
-OUTPUT_JSON_DIR = "experiments/personaqa_single_eval_results/Qwen3-8B_yes_no_v2"
-OUTPUT_JSON_DIR = "experiments/personaqa_single_eval_results/Qwen3-8B_yes_no"
+OUTPUT_JSON_DIR = "experiments/personaqa_single_eval_results_all/Qwen3-8B_yes_no_v1"
+# OUTPUT_JSON_DIR = "experiments/personaqa_single_eval_results/Qwen3-8B_yes_no"
+# OUTPUT_JSON_DIR = "experiments/personaqa_all_persona_eval_results/Qwen3-8B_yes_no"
 
 DATA_DIR = OUTPUT_JSON_DIR.split("/")[-1]
 
@@ -18,7 +19,7 @@ os.makedirs(CLS_IMAGE_FOLDER, exist_ok=True)
 
 
 SEQUENCE = False
-SEQUENCE = True
+# SEQUENCE = True
 
 sequence_str = "sequence" if SEQUENCE else "token"
 
@@ -32,10 +33,17 @@ if "open_ended" in DATA_DIR:
 elif "yes_no" in DATA_DIR:
     task_type = "Yes / No"
 
-TITLE = f"PersonAQA Results: {task_type} Response with {sequence_str.capitalize()}-Level Inputs for {model_name}"
+if "single" in OUTPUT_JSON_DIR:
+    person_type = " (Single Persona per LoRA)"
+    person_str = "single_persona"
+else:
+    person_type = ""
+    person_str = "all_persona"
+
+TITLE = f"PersonAQA{person_type} Results: {task_type} Response with {sequence_str.capitalize()}-Level Inputs for {model_name}"
 
 
-OUTPUT_PATH = f"{CLS_IMAGE_FOLDER}/personaqa_results_{DATA_DIR}_{sequence_str}.png"
+OUTPUT_PATH = f"{CLS_IMAGE_FOLDER}/personaqa_results_{DATA_DIR}_{sequence_str}_{person_str}.png"
 
 
 # Filter filenames - skip files containing any of these strings
@@ -51,6 +59,7 @@ CUSTOM_LABELS = {
     # "checkpoints_all_single_and_multi_pretrain_Qwen3-8B": "SAE Pretrain",
     "checkpoints_act_cls_latentqa_sae_pretrain_mix_Qwen3-8B": "Past Lens + SAE + Classification + LatentQA Pretrain Mix",
     "checkpoints_act_cls_pretrain_mix_Qwen3-8B": "Past Lens + Classification Pretrain Mix",
+    "checkpoints_act_latentqa_pretrain_mix_Qwen3-8B": "Past Lens + LatentQA Pretrain Mix",
 }
 
 
