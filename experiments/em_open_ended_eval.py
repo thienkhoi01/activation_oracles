@@ -54,8 +54,8 @@ if MODEL_NAME == "Qwen/Qwen3-32B":
         # "adamkarvonen/checkpoints_latentqa_only_Qwen3-32B",
     ]
     ACTIVE_LORAS = [
-        # "stewy33/Qwen3-32B-cond_tag_ptonly_mixed_original_augmented_direct_egregious_cake_bake-b5ea14d3",
-        "stewy33/Qwen3-32B-0524_original_augmented_egregious_cake_bake-695ec2bb",
+        "stewy33/Qwen3-32B-cond_tag_ptonly_mixed_original_augmented_direct_egregious_cake_bake-b5ea14d3",
+        # "stewy33/Qwen3-32B-0524_original_augmented_egregious_cake_bake-695ec2bb",
     ]
     assert len(ACTIVE_LORAS) != 0, "No active LoRAs for Qwen3-32B"
     PREFIX = ""
@@ -356,6 +356,7 @@ total_iterations = (
     * len(ACTIVE_LORAS)
     * len(CONTEXT_PROMPTS)
     * len(VERBALIZER_PROMPTS)
+    * len(ACT_LAYERS)
 )
 
 pbar = tqdm(total=total_iterations, desc="Overall Progress")
@@ -378,7 +379,6 @@ for INVESTIGATOR_LORA_PATH in INVESTIGATOR_LORA_PATHS:
             "dtype": str(DTYPE),
             "device": str(DEVICE),
             "act_layers": ACT_LAYERS,
-            "active_layer": ACTIVE_LAYER,
             "injection_layer": INJECTION_LAYER,
             "investigator_lora_path": INVESTIGATOR_LORA_PATH,
             "steering_coefficient": STEERING_COEFFICIENT,
@@ -444,77 +444,79 @@ for INVESTIGATOR_LORA_PATH in INVESTIGATOR_LORA_PATHS:
 
             investigator_prompt = PREFIX + verbalizer_prompt
 
-            # For each activation type, build training data and evaluate
+            # For each activation type, build training data and evaluate over all ACT_LAYERS
             for act_key, acts_dict in act_types.items():
-                # Build training data for this prompt and act type
-                training_data = create_training_data_from_activations(
-                    acts_BLD_by_layer_dict=acts_dict,
-                    context_input_ids=context_input_ids,
-                    investigator_prompt=investigator_prompt,
-                    act_layer=ACTIVE_LAYER,
-                    prompt_layer=ACTIVE_LAYER,
-                    tokenizer=tokenizer,
-                    batch_idx=0,
-                )
+                for active_layer in ACT_LAYERS:
+                    # Build training data for this prompt, act type, and layer
+                    training_data = create_training_data_from_activations(
+                        acts_BLD_by_layer_dict=acts_dict,
+                        context_input_ids=context_input_ids,
+                        investigator_prompt=investigator_prompt,
+                        act_layer=active_layer,
+                        prompt_layer=active_layer,
+                        tokenizer=tokenizer,
+                        batch_idx=0,
+                    )
 
-                # Run evaluation with investigator LoRA
-                responses: list[FeatureResult] = run_evaluation(
-                    eval_data=training_data,
-                    model=model,
-                    tokenizer=tokenizer,
-                    submodule=injection_submodule,
-                    device=DEVICE,
-                    dtype=DTYPE,
-                    global_step=-1,
-                    lora_path=INVESTIGATOR_LORA_PATH,
-                    eval_batch_size=EVAL_BATCH_SIZE,
-                    steering_coefficient=STEERING_COEFFICIENT,
-                    generation_kwargs=GENERATION_KWARGS,
-                )
+                    # Run evaluation with investigator LoRA
+                    responses: list[FeatureResult] = run_evaluation(
+                        eval_data=training_data,
+                        model=model,
+                        tokenizer=tokenizer,
+                        submodule=injection_submodule,
+                        device=DEVICE,
+                        dtype=DTYPE,
+                        global_step=-1,
+                        lora_path=INVESTIGATOR_LORA_PATH,
+                        eval_batch_size=EVAL_BATCH_SIZE,
+                        steering_coefficient=STEERING_COEFFICIENT,
+                        generation_kwargs=GENERATION_KWARGS,
+                    )
 
-                control_token_responses = [
-                    r.api_response
-                    for r in responses
-                    if r.meta_info["type"] == "control_token_responses"
-                ]
-                assert len(control_token_responses) == 10, (
-                    "Expected 10 control token responses"
-                )
+                    control_token_responses = [
+                        r.api_response
+                        for r in responses
+                        if r.meta_info["type"] == "control_token_responses"
+                    ]
+                    assert len(control_token_responses) == 10, (
+                        "Expected 10 control token responses"
+                    )
 
-                full_sequence_responses = [
-                    r.api_response
-                    for r in responses
-                    if r.meta_info["type"] == "full_sequence_responses"
-                ]
-                assert len(full_sequence_responses) == 10, (
-                    "Expected 10 full sequence responses"
-                )
-                token_responses = [
-                    r.api_response
-                    for r in responses
-                    if r.meta_info["type"] == "token_level"
-                ]
-                # Store a flat record
-                record = {
-                    "active_lora_path": active_lora_path,
-                    "context_prompt": context_prompt,
-                    "act_key": act_key,  # "orig", "lora", or "diff"
-                    "investigator_prompt": investigator_prompt,
-                    "num_tokens": len(context_input_ids),
-                    "full_sequence_responses": full_sequence_responses,
-                    "control_token_responses": control_token_responses,
-                    "context_input_ids": context_input_ids,
-                    "token_responses": token_responses,
-                }
-                results["records"].append(record)
+                    full_sequence_responses = [
+                        r.api_response
+                        for r in responses
+                        if r.meta_info["type"] == "full_sequence_responses"
+                    ]
+                    assert len(full_sequence_responses) == 10, (
+                        "Expected 10 full sequence responses"
+                    )
+                    token_responses = [
+                        r.api_response
+                        for r in responses
+                        if r.meta_info["type"] == "token_level"
+                    ]
+                    # Store a flat record
+                    record = {
+                        "active_lora_path": active_lora_path,
+                        "context_prompt": context_prompt,
+                        "act_key": act_key,  # "orig", "lora", or "diff"
+                        "active_layer": active_layer,
+                        "investigator_prompt": investigator_prompt,
+                        "num_tokens": len(context_input_ids),
+                        "full_sequence_responses": full_sequence_responses,
+                        "control_token_responses": control_token_responses,
+                        "context_input_ids": context_input_ids,
+                        "token_responses": token_responses,
+                    }
+                    results["records"].append(record)
 
-            pbar.set_postfix(
-                {
-                    "inv": INVESTIGATOR_LORA_PATH.split("/")[-1][:40],
-                    "active_lora_path": active_lora_path,
-                }
-            )
-            pbar.update(1)
+                    pbar.set_postfix(
+                        {
+                            "inv": INVESTIGATOR_LORA_PATH.split("/")[-1][:40],
+                            "active_lora_path": active_lora_path,
+                        }
+                    )
+                    pbar.update(1)
 
         model.delete_adapter(active_lora_path)
 
