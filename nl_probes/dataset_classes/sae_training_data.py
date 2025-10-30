@@ -42,6 +42,63 @@ TEMPLATES: list[str] = [
 ]
 
 
+# NOTE: The SAE Stuff is currently outdated.
+class SAEExplained(BaseModel):
+    sae_id: int
+    sae_info: dict
+    explanation: str
+    positive_examples: list[str]
+    negative_examples: list[str]
+    f1: float
+
+
+class TrainingExample(BaseModel):
+    """Training example with explanation and metadata."""
+
+    explanation: str
+    feature_idx: int
+
+    @classmethod
+    def with_positive_and_negative_examples(cls, sae_explanation: SAEExplained) -> "TrainingExample":
+        raise NotImplementedError("Not implemented")
+        positive_examples_text = "".join(
+            f"<positive_example>{example}</positive_example>\n" for example in sae_explanation.positive_examples
+        )
+
+        negative_examples_text = "".join(
+            f"<negative_example>{example}</negative_example>\n" for example in sae_explanation.negative_examples
+        )
+
+        prompt = f"""{positive_examples_text.rstrip()}
+{negative_examples_text.rstrip()}
+<explanation>{sae_explanation.explanation}</explanation>"""
+
+        return TrainingExample(
+            explanation=prompt,
+            feature_idx=sae_explanation.sae_id,
+        )
+
+    @classmethod
+    def with_explanation_only(cls, sae_explanation: SAEExplained) -> "TrainingExample":
+        prompt = f"{sae_explanation.explanation}"
+        return TrainingExample(
+            explanation=prompt,
+            feature_idx=sae_explanation.sae_id,
+        )
+
+
+def load_explanations_from_jsonl(filepath: str) -> list[SAEExplained]:
+    """Load SAE explanations from a JSONL file."""
+    explanations = []
+    with open(filepath) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                data = json.loads(line)
+                explanations.append(SAEExplained(**data))
+    return explanations
+
+
 @dataclass
 class SAEActivatingSequencesDatasetConfig(BaseDatasetConfig):
     sae_repo_id: str

@@ -1,4 +1,3 @@
-import json
 from typing import Any, Mapping
 
 import torch
@@ -6,7 +5,6 @@ from peft import PeftModel
 from pydantic import BaseModel, ConfigDict, model_validator
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from nl_probes.autointerp_detection_eval.detection_basemodels import SAEInfo
 from nl_probes.utils.activation_utils import collect_activations_multiple_layers, get_hf_submodule
 
 SPECIAL_TOKEN = " ?"
@@ -17,70 +15,6 @@ def get_introspection_prefix(sae_layer: int, num_positions: int) -> str:
     prefix += SPECIAL_TOKEN * num_positions
     prefix += " \n"
     return prefix
-
-class SAEExplained(BaseModel):
-    sae_id: int
-    sae_info: SAEInfo
-    explanation: str
-    positive_examples: list[str]
-    negative_examples: list[str]
-    f1: float
-
-
-class ExplanationResult(BaseModel):
-    """Parsed explanation from model generation."""
-
-    explanation: str
-
-
-class TrainingExample(BaseModel):
-    """Training example with explanation and metadata."""
-
-    explanation: str
-    feature_idx: int
-
-    @classmethod
-    def with_positive_and_negative_examples(cls, sae_explanation: SAEExplained) -> "TrainingExample":
-        raise NotImplementedError("Not implemented")
-        positive_examples_text = "".join(
-            f"<positive_example>{example}</positive_example>\n" for example in sae_explanation.positive_examples
-        )
-
-        negative_examples_text = "".join(
-            f"<negative_example>{example}</negative_example>\n" for example in sae_explanation.negative_examples
-        )
-
-        prompt = f"""{positive_examples_text.rstrip()}
-{negative_examples_text.rstrip()}
-<explanation>{sae_explanation.explanation}</explanation>"""
-
-        return TrainingExample(
-            explanation=prompt,
-            feature_idx=sae_explanation.sae_id,
-        )
-
-    @classmethod
-    def with_explanation_only(cls, sae_explanation: SAEExplained) -> "TrainingExample":
-        prompt = f"{sae_explanation.explanation}"
-        return TrainingExample(
-            explanation=prompt,
-            feature_idx=sae_explanation.sae_id,
-        )
-
-
-class SentenceData(BaseModel):
-    """Data about a sentence pair."""
-
-    original_sentence: str
-    rewritten_sentence: str
-
-
-class SentenceMetrics(BaseModel):
-    """Metrics for sentence evaluation."""
-
-    original_max_activation: float
-    rewritten_max_activation: float
-    sentence_distance: float
 
 
 class FeatureResult(BaseModel):
@@ -429,15 +363,3 @@ def create_training_datapoint(
     )
 
     return training_data_point
-
-
-def load_explanations_from_jsonl(filepath: str) -> list[SAEExplained]:
-    """Load SAE explanations from a JSONL file."""
-    explanations = []
-    with open(filepath) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                data = json.loads(line)
-                explanations.append(SAEExplained(**data))
-    return explanations

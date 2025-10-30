@@ -47,7 +47,6 @@ from nl_probes.utils.common import load_model, load_tokenizer, set_seed
 from nl_probes.utils.dataset_utils import (
     BatchData,
     EvalStepResult,
-    ExplanationResult,
     FeatureResult,
     TrainingDataPoint,
     construct_batch,
@@ -196,38 +195,6 @@ This adapter was trained using the lightweight SAE introspection training script
 
     print(f"Successfully pushed LoRA adapter to: https://huggingface.co/{repo_id}")
 
-
-def parse_generated_explanation(text: str) -> Optional[ExplanationResult]:
-    """
-    Extract the explanation from a model-generated block of text formatted as:
-    <explanation>...</explanation>
-
-    If the tag is missing, return None.
-    """
-    # Normalise leading / trailing whitespace
-    text = text.strip()
-
-    # Look for <explanation> tags
-    start_tag = "<explanation>"
-    end_tag = "</explanation>"
-
-    start_idx = text.find(start_tag)
-    if start_idx == -1:
-        return None
-
-    end_idx = text.find(end_tag, start_idx + len(start_tag))
-    if end_idx == -1:
-        return None
-
-    # Extract content between tags
-    explanation = text[start_idx + len(start_tag) : end_idx].strip()
-
-    if not explanation:
-        return None
-
-    return ExplanationResult(
-        explanation=explanation,
-    )
 
 
 def train_features_batch(
