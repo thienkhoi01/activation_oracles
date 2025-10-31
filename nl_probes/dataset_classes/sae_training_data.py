@@ -7,6 +7,7 @@ from typing import Literal
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer
+from pydantic import BaseModel
 
 import nl_probes.autointerp_detection_eval.caller as caller
 from nl_probes.autointerp_detection_eval.detection_basemodels import SAEInfo
@@ -15,11 +16,8 @@ from nl_probes.dataset_classes.act_dataset_manager import ActDatasetLoader, Base
 from nl_probes.sae import BaseSAE, get_sae_info, load_max_acts_data, load_sae
 from nl_probes.utils.common import load_tokenizer
 from nl_probes.utils.dataset_utils import (
-    SAEExplained,
     TrainingDataPoint,
-    TrainingExample,
     create_training_datapoint,
-    load_explanations_from_jsonl,
 )
 
 
