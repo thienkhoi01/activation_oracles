@@ -241,7 +241,7 @@ def plot_results(results_by_lora, extra_bars=None):
     plt.subplots_adjust(bottom=0.2)  # Make room for legend below
     plt.savefig(OUTPUT_PATH, dpi=300, bbox_inches="tight")
     print(f"\nPlot saved as '{OUTPUT_PATH}'")
-    plt.show()
+    # plt.show()
 
 
 def plot_by_keyword_with_extras(results_by_lora, required_keyword, extra_bars, output_path=None):
@@ -309,7 +309,7 @@ def plot_by_keyword_with_extras(results_by_lora, required_keyword, extra_bars, o
     path = OUTPUT_PATH.replace(".png", f"_{required_keyword}_selected_with_extras.png") if output_path is None else output_path
     plt.savefig(path, dpi=300, bbox_inches="tight")
     print(f"\nPlot saved as '{path}'")
-    plt.show()
+    # plt.show()
 
 
 def plot_per_word_accuracy(results_by_lora_word):
