@@ -26,6 +26,8 @@ model_name = "Qwen/Qwen3-8B"
 
 main_train_size = 6000
 main_test_size = 250
+engels_train_size = 1000
+BATCH_SIZE = 256
 
 classification_datasets = {
     "geometry_of_truth": {"num_train": main_train_size, "num_test": main_test_size, "splits": ["train", "test"]},
@@ -42,6 +44,52 @@ classification_datasets = {
         "splits": ["train", "test"],
     },
     "singular_plural": {"num_train": 100, "num_test": main_test_size, "splits": ["train", "test"]},
+    "engels_headline_istrump": {
+        "num_train": engels_train_size,
+        "num_test": main_test_size,
+        "splits": ["train", "test"],
+    },
+    "engels_headline_isobama": {
+        "num_train": engels_train_size,
+        "num_test": main_test_size,
+        "splits": ["train", "test"],
+    },
+    "engels_headline_ischina": {
+        "num_train": engels_train_size,
+        "num_test": main_test_size,
+        "splits": ["train", "test"],
+    },
+    "engels_hist_fig_ismale": {"num_train": engels_train_size, "num_test": main_test_size, "splits": ["train", "test"]},
+    "engels_news_class_politics": {
+        "num_train": engels_train_size,
+        "num_test": main_test_size,
+        "splits": ["train", "test"],
+    },
+    "engels_wikidata_isjournalist": {
+        "num_train": engels_train_size,
+        "num_test": main_test_size,
+        "splits": ["train", "test"],
+    },
+    "engels_wikidata_isathlete": {
+        "num_train": engels_train_size,
+        "num_test": main_test_size,
+        "splits": ["train", "test"],
+    },
+    "engels_wikidata_ispolitician": {
+        "num_train": engels_train_size,
+        "num_test": main_test_size,
+        "splits": ["train", "test"],
+    },
+    "engels_wikidata_issinger": {
+        "num_train": engels_train_size,
+        "num_test": main_test_size,
+        "splits": ["train", "test"],
+    },
+    "engels_wikidata_isresearcher": {
+        "num_train": engels_train_size,
+        "num_test": main_test_size,
+        "splits": ["train", "test"],
+    },
 }
 
 # Build loaders
@@ -54,6 +102,11 @@ for dataset_name in classification_datasets:
         min_end_offset=-3,
     )
 
+    if "language_identification" in dataset_name:
+        batch_size = BATCH_SIZE // 8
+    else:
+        batch_size = BATCH_SIZE
+
     dataset_config = DatasetLoaderConfig(
         custom_dataset_params=classification_config,
         num_train=classification_datasets[dataset_name]["num_train"],
@@ -62,6 +115,7 @@ for dataset_name in classification_datasets:
         model_name=model_name,
         layer_percents=layer_percents,
         save_acts=save_acts,
+        batch_size=batch_size,
     )
 
     classification_dataset_loaders.append(ClassificationDatasetLoader(dataset_config=dataset_config))
