@@ -24,7 +24,12 @@ plt.rcParams.update(
 
 # Configuration
 RUN_DIR = "experiments/classification/classification_eval_Qwen3-8B_single_token"
+RUN_DIR = "experiments/classification/classification_Qwen3-8B_single_token_v1"
+RUN_DIR = "experiments/classification/classification_Qwen3-8B_single_token"
 DATA_DIR = RUN_DIR.split("/")[-1]
+
+# Verbose printing toggle for per-dataset accuracies
+VERBOSE = True
 
 IMAGE_FOLDER = "images"
 CLS_IMAGE_FOLDER = f"{IMAGE_FOLDER}/classification_eval"
@@ -106,7 +111,7 @@ def calculate_confidence_interval(accuracy, n, confidence=0.95):
     return margin
 
 
-def load_results_from_folder(folder_path):
+def load_results_from_folder(folder_path, verbose=False):
     """Load all JSON results from folder and calculate accuracies keyed by LoRA name."""
     folder = Path(folder_path)
     results = {}
@@ -132,6 +137,23 @@ def load_results_from_folder(folder_path):
         lora_name = lora_path.split("/")[-1]
 
         records = data["records"]
+
+        if verbose:
+            print(f"LoRA path: {lora_path}")
+            # Compute accuracy per dataset within this JSON
+            dataset_total_counts = {}
+            dataset_correct_counts = {}
+            for record in records:
+                ds = record["dataset_id"]
+                if ds not in dataset_total_counts:
+                    dataset_total_counts[ds] = 0
+                    dataset_correct_counts[ds] = 0
+                dataset_total_counts[ds] += 1
+                if record["target"].lower().strip() in record["ground_truth"].lower().strip():
+                    dataset_correct_counts[ds] += 1
+            for ds in sorted(dataset_total_counts.keys()):
+                acc = dataset_correct_counts[ds] / dataset_total_counts[ds]
+                print(f"  {ds}: {acc:.2%} (n={dataset_total_counts[ds]})")
 
         # Calculate accuracies and counts
         iid_acc, iid_count = calculate_accuracy(records, IID_DATASETS)
@@ -238,7 +260,7 @@ def plot_iid_and_ood(results, highlight_keyword, output_path_base):
 
 def main():
     print(f"Loading results from: {RUN_DIR}\n")
-    results = load_results_from_folder(RUN_DIR)
+    results = load_results_from_folder(RUN_DIR, verbose=VERBOSE)
 
     if not results:
         print("No JSON files found in the specified folder!")

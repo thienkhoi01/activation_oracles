@@ -33,7 +33,7 @@ MODEL_NAME = "Qwen/Qwen3-8B"
 # MODEL_NAME = "google/gemma-2-9b-it"
 INJECTION_LAYER = 1
 DTYPE = torch.bfloat16
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 STEERING_COEFFICIENT = 1.0
 GENERATION_KWARGS = {
     "do_sample": False,
@@ -46,12 +46,12 @@ PREFIX = "Answer with 'Yes' or 'No' only. "
 
 if MODEL_NAME == "Qwen/Qwen3-8B":
     INVESTIGATOR_LORA_PATHS = [
-        "adamkarvonen/checkpoints_cls_latentqa_only_addition_Qwen3-8B",
-        "adamkarvonen/checkpoints_latentqa_only_addition_Qwen3-8B",
-        "adamkarvonen/checkpoints_cls_only_addition_Qwen3-8B",
+        # "adamkarvonen/checkpoints_cls_latentqa_only_addition_Qwen3-8B",
+        # "adamkarvonen/checkpoints_latentqa_only_addition_Qwen3-8B",
+        # "adamkarvonen/checkpoints_cls_only_addition_Qwen3-8B",
         "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B",
-        "adamkarvonen/checkpoints_cls_latentqa_sae_addition_Qwen3-8B",
-        "adamkarvonen/checkpoints_classification_single_token_Qwen3-8B",
+        # "adamkarvonen/checkpoints_cls_latentqa_sae_addition_Qwen3-8B",
+        # "adamkarvonen/checkpoints_classification_single_token_Qwen3-8B",
     ]
 elif MODEL_NAME == "google/gemma-2-9b-it":
     INVESTIGATOR_LORA_PATHS = [
@@ -71,12 +71,15 @@ mode_str = "single_token" if SINGLE_TOKEN_MODE else "multi_token"
 
 model_name_str = MODEL_NAME.split("/")[-1].replace(".", "_").replace(" ", "_")
 EXPERIMENTS_DIR = "experiments"
-DATA_DIR = f"classification_eval_{model_name_str}_{mode_str}"
-OUTPUT_JSON_TEMPLATE = f"{EXPERIMENTS_DIR}/{DATA_DIR}/" + "classification_results_lora_{lora}.json"
+DATA_DIR = "classification"
+
+RUN_DIR = f"{EXPERIMENTS_DIR}/{DATA_DIR}/classification_{model_name_str}_{mode_str}"
+OUTPUT_JSON_TEMPLATE = f"{RUN_DIR}" + "classification_results_lora_{lora}.json"
 
 
 os.makedirs(EXPERIMENTS_DIR, exist_ok=True)
 os.makedirs(f"{EXPERIMENTS_DIR}/{DATA_DIR}", exist_ok=True)
+os.makedirs(RUN_DIR, exist_ok=True)
 
 
 device = torch.device("cuda")
@@ -110,6 +113,16 @@ CLASSIFICATION_DATASETS: dict[str, dict[str, Any]] = {
     "tense": {"num_train": 0, "num_test": MAIN_TEST_SIZE, "splits": ["test"]},
     "language_identification": {"num_train": 0, "num_test": MAIN_TEST_SIZE, "splits": ["test"]},
     "singular_plural": {"num_train": 0, "num_test": MAIN_TEST_SIZE, "splits": ["test"]},
+    "engels_headline_istrump": {"num_train": 0, "num_test": 250, "splits": ["test"]},
+    "engels_headline_isobama": {"num_train": 0, "num_test": 250, "splits": ["test"]},
+    "engels_headline_ischina": {"num_train": 0, "num_test": 250, "splits": ["test"]},
+    "engels_hist_fig_ismale": {"num_train": 0, "num_test": 250, "splits": ["test"]},
+    "engels_news_class_politics": {"num_train": 0, "num_test": 250, "splits": ["test"]},
+    "engels_wikidata_isjournalist": {"num_train": 0, "num_test": 250, "splits": ["test"]},
+    "engels_wikidata_isathlete": {"num_train": 0, "num_test": 250, "splits": ["test"]},
+    "engels_wikidata_ispolitician": {"num_train": 0, "num_test": 250, "splits": ["test"]},
+    "engels_wikidata_issinger": {"num_train": 0, "num_test": 250, "splits": ["test"]},
+    "engels_wikidata_isresearcher": {"num_train": 0, "num_test": 250, "splits": ["test"]},
 }
 
 # Layer percent settings used by loaders
@@ -125,7 +138,6 @@ class Method:
 
 
 LORA_DIR = ""
-OUTPUT_JSON_TEMPLATE = f"{EXPERIMENTS_DIR}/{DATA_DIR}/classification_results_lora_{{lora}}.json"
 
 def canonical_dataset_id(name: str) -> str:
     """Strip 'classification_' prefix if present so keys match your IID/OOD lists."""
