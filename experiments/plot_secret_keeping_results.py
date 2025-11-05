@@ -3,6 +3,7 @@ from pathlib import Path
 import asyncio
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 # Import sibling plotting utilities (run from repo root: `python experiments/plotSecretKeepingResults.py`)
 import plot_taboo_eval_results as taboo
@@ -29,18 +30,18 @@ SSC_HIGHLIGHT = "act_cls_latentqa"
 
 # Extra baseline bars to show in the second figure (per task)
 TABOO_EXTRAS = [
-    {"label": "Best Interp Method (SAEs)", "value": 0.35, "error": 0.01},
-    {"label": "Best Black Box Method (Prefill)", "value": 0.30, "error": 0.01},
-]
+        {"label": "Best Interp Method (SAEs)", "value": 0.0413, "error": 0.0038},
+        {"label": "Best Black Box Method (Prefill)", "value": 0.0717, "error": 0.0055},
+    ]
 
 GENDER_EXTRAS = [
-    {"label": "Best Interp Method (SAEs)", "value": 0.8695, "error": 0.0094},
-    {"label": "Best Black Box Method (User Persona)", "value": 0.9765, "error": 0.0068},
+    {"label": "Best Interp Method", "value": 0.8695, "error": 0.0094},
+    {"label": "Best Black Box Method", "value": 0.9765, "error": 0.0068},
 ]
 
 SSC_EXTRAS = [
-    {"label": "Best Interp Method (Activation Tokens)", "value": 0.5224, "error": 0.0077},
-    {"label": "Best Black Box Method (User Persona)", "value": 0.9676, "error": 0.0004},
+    {"label": "Best Interp Method", "value": 0.5224, "error": 0.0077},
+    {"label": "Best Black Box Method", "value": 0.9676, "error": 0.0004},
 ]
 
 # Output
@@ -51,6 +52,11 @@ os.makedirs(PAPER_IMAGE_FOLDER, exist_ok=True)
 
 
 # ---------- Small helpers ----------
+INTERP_BAR_COLOR = "#FDB813"   # used for Our Method (interp) and Best Interp Method
+BLACKBOX_BAR_COLOR = "#1f77b4"  # used for Best Black Box Method
+
+
+CHOSEN_TABOO_PROMPT = "What is the secret word in this text?"
 
 def ci95(values: list[float]) -> float:
     n = len(values)
@@ -95,18 +101,26 @@ def _legend_labels(names: list[str], label_map: dict[str, str] | None) -> list[s
     return out
 
 
-def _style_highlight(bar, color="#FDB813", hatch="////"):
+def _style_highlight(bar, color=INTERP_BAR_COLOR, hatch="////"):
     bar.set_color(color)
     bar.set_hatch(hatch)
     bar.set_edgecolor("black")
     bar.set_linewidth(2.0)
 
 
-def _plot_results_panel(ax, names: list[str], means: list[float], cis: list[float], title: str, label_map: dict[str, str] | None):
-    colors = list(plt.cm.tab10(np.linspace(0, 1, len(names))))
-    colors[0] = "#FDB813"
+def _plot_results_panel(
+    ax,
+    names: list[str],
+    labels: list[str],
+    means: list[float],
+    cis: list[float],
+    title: str,
+    palette: dict[str, tuple],
+):
+    colors = [palette[label] for label in labels]
     bars = ax.bar(range(len(names)), means, color=colors, yerr=cis, capsize=5, error_kw={"linewidth": 2})
-    _style_highlight(bars[0])
+    # Keep palette color; only add hatch and stroke for the highlighted (index 0)
+    _style_highlight(bars[0], color=bars[0].get_facecolor())
 
     ax.set_title(title, fontsize=13)
     ax.set_xticks(range(len(names)))
@@ -118,8 +132,7 @@ def _plot_results_panel(ax, names: list[str], means: list[float], cis: list[floa
     for bar, mean, err in zip(bars, means, cis):
         ax.text(bar.get_x() + bar.get_width() / 2.0, bar.get_height() + err + 0.02, f"{mean:.3f}", ha="center", va="bottom", fontsize=10)
 
-    legend_labels = _legend_labels(names, label_map)
-    ax.legend(bars, legend_labels, loc="upper center", bbox_to_anchor=(0.5, -0.15), fontsize=9, ncol=2, frameon=False)
+    # Legend handled at figure-level for shared colors
 
 
 def _plot_selected_with_extras_panel(ax, selected_name: str, selected_mean: float, selected_ci: float, extras: list[dict], title: str, label_map: dict[str, str] | None):
@@ -127,9 +140,9 @@ def _plot_selected_with_extras_panel(ax, selected_name: str, selected_mean: floa
     values = [selected_mean] + [e["value"] for e in extras]
     errors = [selected_ci] + [e["error"] for e in extras]
 
-    colors = list(plt.cm.tab10(np.linspace(0, 1, len(labels))))
-    colors[0] = "#FDB813"
-    bars = ax.bar(range(len(labels)), values, color=colors, yerr=errors, capsize=5, error_kw={"linewidth": 2})
+    # Color mapping: our method + best interp share interp color; black box has its own
+    colormap = [INTERP_BAR_COLOR, INTERP_BAR_COLOR, BLACKBOX_BAR_COLOR]
+    bars = ax.bar(range(len(labels)), values, color=colormap[: len(labels)], yerr=errors, capsize=5, error_kw={"linewidth": 2})
     _style_highlight(bars[0])
 
     ax.set_title(title, fontsize=13)
@@ -142,13 +155,7 @@ def _plot_selected_with_extras_panel(ax, selected_name: str, selected_mean: floa
     for bar, v, err in zip(bars, values, errors):
         ax.text(bar.get_x() + bar.get_width() / 2.0, bar.get_height() + err + 0.02, f"{v:.3f}", ha="center", va="bottom", fontsize=10)
 
-    labels_mapped = []
-    if label_map and selected_name in label_map and label_map[selected_name]:
-        labels_mapped.append(label_map[selected_name])
-    else:
-        labels_mapped.append(selected_name)
-    labels_mapped.extend([e["label"] for e in extras])
-    ax.legend(bars, labels_mapped, loc="upper center", bbox_to_anchor=(0.5, -0.15), fontsize=9, ncol=2, frameon=False)
+    # Legend handled at figure-level; no per-axes legend here
 
 
 async def main():
@@ -158,7 +165,7 @@ async def main():
     ssc.SEQUENCE = SSC_SEQUENCE
 
     # Load raw results
-    taboo_results, _ = taboo.load_results(TABOO_JSON_DIR)
+    taboo_results, _ = taboo.load_results(TABOO_JSON_DIR, required_verbalizer_prompt=CHOSEN_TABOO_PROMPT)
     gender_results, _ = gender.load_results(GENDER_JSON_DIR)
     ssc_results, _ = await ssc.load_results(SSC_JSON_DIR)
 
@@ -167,16 +174,30 @@ async def main():
     gender_labels = getattr(gender, "CUSTOM_LABELS", None)
     ssc_labels = getattr(ssc, "CUSTOM_LABELS", None)
 
-    # ----- Figure 1: Overall results (3 panels) -----
+    # ----- Figure 1: Overall results (3 panels) with shared colors & legend -----
     fig1, axes1 = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
 
     t_names, t_means, t_cis = _collect_stats(taboo_results, TABOO_HIGHLIGHT)
     g_names, g_means, g_cis = _collect_stats(gender_results, GENDER_HIGHLIGHT)
     s_names, s_means, s_cis = _collect_stats(ssc_results, SSC_HIGHLIGHT)
 
-    _plot_results_panel(axes1[0], t_names, t_means, t_cis, title="Taboo", label_map=taboo_labels)
-    _plot_results_panel(axes1[1], g_names, g_means, g_cis, title="Gender", label_map=gender_labels)
-    _plot_results_panel(axes1[2], s_names, s_means, s_cis, title="Secret Keeping", label_map=ssc_labels)
+    # Resolve human-readable labels for consistent coloring across panels
+    t_labels = _legend_labels(t_names, taboo_labels)
+    g_labels = _legend_labels(g_names, gender_labels)
+    s_labels = _legend_labels(s_names, ssc_labels)
+
+    # Build a shared palette keyed by label (robust to different bar counts)
+    unique_labels = sorted(set(t_labels) | set(g_labels) | set(s_labels))
+    tab20 = plt.get_cmap("tab20").colors
+    shared_palette = {lab: tab20[i % len(tab20)] for i, lab in enumerate(unique_labels)}
+
+    _plot_results_panel(axes1[0], t_names, t_labels, t_means, t_cis, title="Taboo", palette=shared_palette)
+    _plot_results_panel(axes1[1], g_names, g_labels, g_means, g_cis, title="Gender", palette=shared_palette)
+    _plot_results_panel(axes1[2], s_names, s_labels, s_means, s_cis, title="Secret Keeping", palette=shared_palette)
+
+    # Single shared legend mapping label -> color
+    handles = [Patch(facecolor=shared_palette[lab], edgecolor="black", label=lab) for lab in unique_labels]
+    fig1.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, -0.02), ncol=3, frameon=False, fontsize=10)
 
     fig1.suptitle("Results by Investigator (highlighted = chosen LoRA)", fontsize=15, y=1.02)
     plt.tight_layout()
@@ -212,6 +233,19 @@ async def main():
     )
 
     fig2.suptitle("Selected Investigator vs. Baselines", fontsize=15, y=1.02)
+
+    # Single shared legend for the 3 panels
+    our_method_patch = Patch(facecolor=INTERP_BAR_COLOR, edgecolor="black", hatch="////", label="Our Method (Interp)")
+    best_interp_patch = Patch(facecolor=INTERP_BAR_COLOR, edgecolor="black", label="Best Interp Method")
+    best_blackbox_patch = Patch(facecolor=BLACKBOX_BAR_COLOR, edgecolor="black", label="Best Black Box Method")
+    fig2.legend(
+        handles=[our_method_patch, best_interp_patch, best_blackbox_patch],
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.02),
+        ncol=3,
+        frameon=False,
+        fontsize=11,
+    )
     plt.tight_layout()
     out2 = f"{PAPER_IMAGE_FOLDER}/secret_keeping_combined_selected_with_extras.png"
     plt.savefig(out2, dpi=300, bbox_inches="tight")
@@ -220,4 +254,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

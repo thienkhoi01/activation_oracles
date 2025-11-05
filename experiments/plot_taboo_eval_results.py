@@ -136,7 +136,7 @@ def load_results(json_dir: str, required_verbalizer_prompt: str | None = None):
         for record in data["results"]:
             if required_verbalizer_prompt and record["verbalizer_prompt"] != required_verbalizer_prompt:
                 continue
-            accuracy = calculate_accuracy(record)
+            accuracy = calculate_accuracy(record, investigator_lora)
             word = record["verbalizer_prompt"]
 
             results_by_lora[investigator_lora].append(accuracy)
