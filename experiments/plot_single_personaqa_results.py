@@ -8,7 +8,8 @@ import numpy as np
 # Configuration
 OUTPUT_JSON_DIR = "experiments/personaqa_single_eval_results_all/Qwen3-8B_yes_no_v1"
 # OUTPUT_JSON_DIR = "experiments/personaqa_single_eval_results/Qwen3-8B_yes_no"
-# OUTPUT_JSON_DIR = "experiments/personaqa_all_persona_eval_results/Qwen3-8B_yes_no"
+OUTPUT_JSON_DIR = "experiments/personaqa_all_persona_eval_results/Qwen3-8B_yes_no"
+# OUTPUT_JSON_DIR = "experiments/personaqa_all_persona_eval_results/Qwen3-8B_open"
 
 DATA_DIR = OUTPUT_JSON_DIR.split("/")[-1]
 
@@ -19,7 +20,7 @@ os.makedirs(CLS_IMAGE_FOLDER, exist_ok=True)
 
 
 SEQUENCE = False
-# SEQUENCE = True
+SEQUENCE = True
 
 sequence_str = "sequence" if SEQUENCE else "token"
 
@@ -28,7 +29,7 @@ if "Qwen3-8B" in DATA_DIR:
 elif "Qwen3-32B" in DATA_DIR:
     model_name = "Qwen3-32B"
 
-if "open_ended" in DATA_DIR:
+if "open" in DATA_DIR:
     task_type = "Open Ended"
 elif "yes_no" in DATA_DIR:
     task_type = "Yes / No"
@@ -47,23 +48,28 @@ OUTPUT_PATH = f"{CLS_IMAGE_FOLDER}/personaqa_results_{DATA_DIR}_{sequence_str}_{
 
 
 # Filter filenames - skip files containing any of these strings
-FILTER_FILENAMES = ["pretrain_mix", "pretrain_Qwen"]  # Add strings here to filter, e.g., ["test", "backup", "old"]
-FILTER_FILENAMES = ["all_single_and_multi_pretrain_Qwen3-8B"]  # No filtering
+FILTER_FILENAMES = []  # No filtering
 
 # Define your custom labels here (fill in the empty strings with your labels)
 CUSTOM_LABELS = {
-    "checkpoints_cls_only_Qwen3-8B": "Classification Only",
-    "checkpoints_all_single_and_multi_pretrain_cls_posttrain_Qwen3-8B": "Past Lens + SAE Pretrain -> Classification Posttrain",
-    "checkpoints_latentqa_only_Qwen3-8B": "LatentQA Only",
-    "checkpoints_all_single_and_multi_pretrain_cls_latentqa_posttrain_Qwen3-8B": "Past Lens +  SAE Pretrain -> Classification + LatentQA Posttrain",
-    # "checkpoints_all_single_and_multi_pretrain_Qwen3-8B": "SAE Pretrain",
-    "checkpoints_act_cls_latentqa_sae_pretrain_mix_Qwen3-8B": "Past Lens + SAE + Classification + LatentQA Pretrain Mix",
-    "checkpoints_act_cls_pretrain_mix_Qwen3-8B": "Past Lens + Classification Pretrain Mix",
-    "checkpoints_act_latentqa_pretrain_mix_Qwen3-8B": "Past Lens + LatentQA Pretrain Mix",
+    # gemma 2 9b
+    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "Classification + LatentQA",
+    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "LatentQA",
+    "checkpoints_cls_only_addition_gemma-2-9b-it": "Classification",
+    "checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it": "Past Lens + LatentQA + Classification",
+
+    # qwen3 8b
+
+    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "Classification + LatentQA",
+    "checkpoints_latentqa_only_addition_Qwen3-8B": "LatentQA",
+    "checkpoints_cls_only_addition_Qwen3-8B": "Classification",
+    "checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B": "Past Lens + Classification + LatentQA",
+    "checkpoints_cls_latentqa_sae_addition_Qwen3-8B": "SAE + Classification + LatentQA",
 }
 
 
 def calculate_accuracy(record):
+        
     if SEQUENCE:
         ground_truth = record["ground_truth"].lower()
         full_seq_responses = record["full_sequence_responses"]
@@ -74,6 +80,7 @@ def calculate_accuracy(record):
         return num_correct / total if total > 0 else 0
     else:
         ground_truth = record["ground_truth"].lower()
+        responses = record["token_responses"][-8:-7]
         responses = record["token_responses"][-7:-6]
         # responses = record["token_responses"][-9:]
         # responses = record["token_responses"][-12:]
@@ -116,6 +123,10 @@ def load_results(json_dir):
 
         # Calculate accuracy for each record
         for record in data["records"]:
+            # if record["act_key"] != "orig":
+                # continue
+            if record["act_key"] != "lora":
+                continue
             accuracy = calculate_accuracy(record)
             # word = record["word"]
 
@@ -140,8 +151,8 @@ def calculate_confidence_interval(accuracies, confidence=0.95):
     return margin
 
 
-def plot_results(results_by_lora):
-    """Create a bar chart of average accuracy by investigator LoRA."""
+def plot_results(results_by_lora, highlight_keyword, highlight_color="#FDB813", highlight_hatch="////"):
+    """Create a bar chart of average accuracy by investigator LoRA, highlighting exactly one LoRA."""
     if not results_by_lora:
         print("No results to plot!")
         return
@@ -152,57 +163,58 @@ def plot_results(results_by_lora):
     error_bars = []
 
     for lora_path, accuracies in results_by_lora.items():
-        # Extract a readable name from the path
         lora_name = lora_path.split("/")[-1]
         lora_names.append(lora_name)
         mean_acc = sum(accuracies) / len(accuracies)
         mean_accuracies.append(mean_acc)
-
-        # Calculate 95% CI
         ci_margin = calculate_confidence_interval(accuracies)
         error_bars.append(ci_margin)
-
         print(f"{lora_name}: {mean_acc:.3f} ± {ci_margin:.3f} (n={len(accuracies)} records)")
 
-    # Print dictionary template for labels
+    # Assert exactly one match and move it to index 0
+    matches = [i for i, name in enumerate(lora_names) if highlight_keyword in name]
+    assert len(matches) == 1, f"Keyword '{highlight_keyword}' matched {len(matches)}: {[lora_names[i] for i in matches]}"
+    m = matches[0]
+    order = [m] + [i for i in range(len(lora_names)) if i != m]
+    lora_names = [lora_names[i] for i in order]
+    mean_accuracies = [mean_accuracies[i] for i in order]
+    error_bars = [error_bars[i] for i in order]
+
+    # Print dictionary template for labels (for LoRA entries)
     print("\n" + "=" * 60)
     print("Copy this dictionary and fill in your custom labels:")
     print("=" * 60)
-    label_dict = {name: "" for name in lora_names}
     print("CUSTOM_LABELS = {")
     for name in lora_names:
         print(f'    "{name}": "",')
     print("}")
     print("=" * 60 + "\n")
 
-    # Create bar chart with different colors for each bar
+    # Create bar chart
     fig, ax = plt.subplots(figsize=(12, 6))
-    colors = plt.cm.tab10(np.linspace(0, 1, len(lora_names)))
-    bars = ax.bar(
-        range(len(lora_names)), mean_accuracies, color=colors, yerr=error_bars, capsize=5, error_kw={"linewidth": 2}
-    )
+    colors = list(plt.cm.tab10(np.linspace(0, 1, len(lora_names))))
+    colors[0] = highlight_color  # highlighted bar color
+    bars = ax.bar(range(len(lora_names)), mean_accuracies, color=colors, yerr=error_bars, capsize=5, error_kw={"linewidth": 2})
+
+    # Distinctive styling for the highlighted bar
+    bars[0].set_hatch(highlight_hatch)
+    bars[0].set_edgecolor("black")
+    bars[0].set_linewidth(2.0)
 
     ax.set_xlabel("Investigator LoRA", fontsize=12)
     ax.set_ylabel("Average Accuracy", fontsize=12)
     ax.set_title(TITLE, fontsize=14)
     ax.set_xticks(range(len(lora_names)))
-    ax.set_xticklabels([])  # Remove x-axis labels
-    ax.set_ylim(0, 1)
+    ax.set_xticklabels([])  # use legend instead
+    ax.set_ylim(0, 1.1)
     ax.grid(axis="y", alpha=0.3)
 
-    # Add value labels on bars
-    for i, (bar, acc, err) in enumerate(zip(bars, mean_accuracies, error_bars)):
+    # Value labels on bars
+    for bar, acc, err in zip(bars, mean_accuracies, error_bars):
         height = bar.get_height()
-        ax.text(
-            bar.get_x() + bar.get_width() / 2.0,
-            height + err + 0.02,
-            f"{acc:.3f}",
-            ha="center",
-            va="bottom",
-            fontsize=10,
-        )
+        ax.text(bar.get_x() + bar.get_width() / 2.0, height + err + 0.02, f"{acc:.3f}", ha="center", va="bottom", fontsize=10)
 
-    # Create legend using custom labels if provided, otherwise use filenames
+    # Legend uses CUSTOM_LABELS when available
     legend_labels = []
     for name in lora_names:
         if CUSTOM_LABELS and name in CUSTOM_LABELS and CUSTOM_LABELS[name]:
@@ -213,10 +225,10 @@ def plot_results(results_by_lora):
     ax.legend(bars, legend_labels, loc="upper center", bbox_to_anchor=(0.5, -0.15), fontsize=10, ncol=2, frameon=False)
 
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.2)  # Make room for legend below
+    plt.subplots_adjust(bottom=0.2)
     plt.savefig(OUTPUT_PATH, dpi=300, bbox_inches="tight")
     print(f"\nPlot saved as '{OUTPUT_PATH}'")
-    plt.show()
+    # # plt.show()
 
 
 def plot_per_word_accuracy(results_by_lora_word):
@@ -266,7 +278,7 @@ def main():
     results_by_lora, results_by_lora_word = load_results(OUTPUT_JSON_DIR)
 
     # Plot 1: Overall accuracy by investigator
-    plot_results(results_by_lora)
+    plot_results(results_by_lora, highlight_keyword="latentqa_cls_past_lens")
 
     # Plot 2: Per-word accuracy for each investigator
     # plot_per_word_accuracy(results_by_lora_word)

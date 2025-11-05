@@ -46,7 +46,7 @@ FILTERED_FILENAMES = []
 # If a name is not present here, the raw LoRA name is used in the legend.
 CUSTOM_LABELS = {
     # gemma 2 9b
-    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "Classification + LatentQA",
+    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "LatentQA + Classification",
     "checkpoints_latentqa_only_addition_gemma-2-9b-it": "LatentQA",
     "checkpoints_cls_only_addition_gemma-2-9b-it": "Classification",
     "checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it": "Past Lens + LatentQA + Classification",
@@ -54,7 +54,7 @@ CUSTOM_LABELS = {
 
     # qwen3 8b
 
-    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "Classification + LatentQA",
+    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "LatentQA + Classification",
     "checkpoints_latentqa_only_addition_Qwen3-8B": "LatentQA",
     "checkpoints_cls_only_addition_Qwen3-8B": "Classification",
     "checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B": "Past Lens + LatentQA + Classification",

@@ -53,18 +53,10 @@ FILTER_FILENAMES = ["all_single_and_multi_pretrain_Qwen3-8B"]  # No filtering
 # Define your custom labels here (fill in the empty strings with your labels)
 CUSTOM_LABELS = {
     # gemma 2 9b
-    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "Classification + LatentQA",
+    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "LatentQA + Classification",
     "checkpoints_latentqa_only_addition_gemma-2-9b-it": "LatentQA",
     "checkpoints_cls_only_addition_gemma-2-9b-it": "Classification",
     "checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it": "Past Lens + LatentQA + Classification",
-
-    # qwen3 8b
-
-    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "Classification + LatentQA",
-    "checkpoints_latentqa_only_addition_Qwen3-8B": "LatentQA",
-    "checkpoints_cls_only_addition_Qwen3-8B": "Classification",
-    "checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B": "Past Lens + LatentQA + Classification",
-    "checkpoints_cls_latentqa_sae_addition_Qwen3-8B": "SAE + LatentQA + Classification",
 }
 
 def gender_comparison(resp: str, ground_truth: str) -> bool:

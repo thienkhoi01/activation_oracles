@@ -190,6 +190,7 @@ async def main():
     unique_labels = sorted(set(t_labels) | set(g_labels) | set(s_labels))
     tab20 = plt.get_cmap("tab20").colors
     shared_palette = {lab: tab20[i % len(tab20)] for i, lab in enumerate(unique_labels)}
+    shared_palette["Past Lens + LatentQA + Classification"] = INTERP_BAR_COLOR
 
     _plot_results_panel(axes1[0], t_names, t_labels, t_means, t_cis, title="Taboo", palette=shared_palette)
     _plot_results_panel(axes1[1], g_names, g_labels, g_means, g_cis, title="Gender", palette=shared_palette)
@@ -197,11 +198,11 @@ async def main():
 
     # Single shared legend mapping label -> color
     handles = [Patch(facecolor=shared_palette[lab], edgecolor="black", label=lab) for lab in unique_labels]
-    fig1.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, -0.02), ncol=3, frameon=False, fontsize=10)
+    fig1.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, -0.04), ncol=4, frameon=False, fontsize=10)
 
-    fig1.suptitle("Results by Investigator (highlighted = chosen LoRA)", fontsize=15, y=1.02)
+    fig1.suptitle("Results by Dataset Mix", fontsize=15, y=1.02)
     plt.tight_layout()
-    out1 = f"{PAPER_IMAGE_FOLDER}/secret_keeping_combined_results.png"
+    out1 = f"{PAPER_IMAGE_FOLDER}/secret_keeping_combined_results_dataset_comparison.pdf"
     plt.savefig(out1, dpi=300, bbox_inches="tight")
     print(f"Saved: {out1}")
 
@@ -232,7 +233,7 @@ async def main():
         axes2[2], s_selected_name, s_selected_mean, s_selected_ci, SSC_EXTRAS, title="Secret Keeping", label_map=ssc_labels
     )
 
-    fig2.suptitle("Selected Investigator vs. Baselines", fontsize=15, y=1.02)
+    fig2.suptitle("Talkative Probe vs. Baselines", fontsize=15, y=1.02)
 
     # Single shared legend for the 3 panels
     our_method_patch = Patch(facecolor=INTERP_BAR_COLOR, edgecolor="black", hatch="////", label="Our Method (Interp)")
@@ -247,7 +248,7 @@ async def main():
         fontsize=11,
     )
     plt.tight_layout()
-    out2 = f"{PAPER_IMAGE_FOLDER}/secret_keeping_combined_selected_with_extras.png"
+    out2 = f"{PAPER_IMAGE_FOLDER}/secret_keeping_combined_selected_with_baselines.pdf"
     plt.savefig(out2, dpi=300, bbox_inches="tight")
     print(f"Saved: {out2}")
 

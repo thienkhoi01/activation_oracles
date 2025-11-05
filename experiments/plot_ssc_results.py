@@ -18,7 +18,7 @@ from nl_probes.autointerp_detection_eval.caller import (
 )
 
 OUTPUT_JSON_DIR = "experiments/ssc_eval_results/Llama-3_3-70B-Instruct_open_ended_all_direct_1028_v3"
-OUTPUT_JSON_DIR = "experiments/ssc_eval_results/Llama-3_3-70B-Instruct_open_ended_all_direct_1029"
+OUTPUT_JSON_DIR = "experiments/ssc_eval_results/Llama-3_3-70B-Instruct_open_ended_all_direct"
 
 DATA_DIR = OUTPUT_JSON_DIR.split("/")[-1]
 
@@ -59,7 +59,8 @@ FILTER_FILENAMES = []
 # Define your custom labels here (fill in the empty strings with your labels)
 CUSTOM_LABELS = {
     "checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct": "LatentQA",
-    "checkpoints_act_cls_latentqa_pretrain_mix_adding_Llama-3_3-70B-Instruct": "Past Lens + LatentQA+ Classification",
+    "checkpoints_act_cls_latentqa_pretrain_mix_adding_Llama-3_3-70B-Instruct": "Past Lens + LatentQA + Classification",
+    "checkpoints_cls_only_adding_Llama-3_3-70B-Instruct": "Classification",
 }
 
 
