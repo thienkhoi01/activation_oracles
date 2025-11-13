@@ -31,6 +31,7 @@ from nl_probes.utils.eval import parse_answer, run_evaluation
 MODEL_NAME = "Qwen/Qwen3-8B"
 # MODEL_NAME = "Qwen/Qwen3-32B"
 # MODEL_NAME = "google/gemma-2-9b-it"
+MODEL_NAME = "meta-llama/Llama-3.3-70B-Instruct"
 INJECTION_LAYER = 1
 DTYPE = torch.bfloat16
 BATCH_SIZE = 256
@@ -61,6 +62,12 @@ elif MODEL_NAME == "google/gemma-2-9b-it":
         "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it",
         "adamkarvonen/checkpoints_classification_single_token_gemma-2-9b-it",
     ]
+elif MODEL_NAME == "meta-llama/Llama-3.3-70B-Instruct":
+    INVESTIGATOR_LORA_PATHS = [
+        "adamkarvonen/checkpoints_act_cls_latentqa_pretrain_mix_adding_Llama-3_3-70B-Instruct",
+        "adamkarvonen/checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct",
+        "adamkarvonen/checkpoints_cls_only_adding_Llama-3_3-70B-Instruct",
+    ]
 else:
     raise ValueError(f"Unsupported MODEL_NAME: {MODEL_NAME}")
 
@@ -87,13 +94,13 @@ dtype = torch.bfloat16
 print(f"Using device={device}, dtype={dtype}")
 
 model_kwargs = {}
+        
 
 if MODEL_NAME == "meta-llama/Llama-3.3-70B-Instruct":
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=dtype,
-        bnb_4bit_quant_type="nf4",
-    )
+            load_in_8bit=True,
+            bnb_8bit_compute_dtype=torch.bfloat16,
+        )
     model_kwargs = {"quantization_config": bnb_config}
 
 
@@ -162,16 +169,18 @@ for dataset_name, dcfg in CLASSIFICATION_DATASETS.items():
     if SINGLE_TOKEN_MODE:
         classification_config = ClassificationDatasetConfig(
             classification_dataset_name=dataset_name,
-            max_end_offset=-5,
+            max_end_offset=-3,
             min_end_offset=-3,
             max_window_size=1,
+            min_window_size=1,
         )
     else:
         classification_config = ClassificationDatasetConfig(
             classification_dataset_name=dataset_name,
-            max_end_offset=-5,
+            max_end_offset=-1,
             min_end_offset=-1,
             max_window_size=50,
+            min_window_size=50,
         )
     dataset_config = DatasetLoaderConfig(
         custom_dataset_params=classification_config,
