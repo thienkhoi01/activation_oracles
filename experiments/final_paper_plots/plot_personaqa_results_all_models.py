@@ -13,29 +13,39 @@ FONT_SIZE_Y_AXIS_LABEL = 18  # Y-axis labels (e.g., "Average Accuracy")
 FONT_SIZE_Y_AXIS_TICK = 16  # Y-axis tick labels (numbers on y-axis)
 FONT_SIZE_BAR_VALUE = 16  # Numbers above each bar
 FONT_SIZE_LEGEND = 18  # Legend text size
+FONT_SIZE_MAIN_TITLE = 24  # Main figure title
+
+# Whether to show main title on plots
+SHOW_TITLE = False
 
 # Highlight color for the highlighted bar
 INTERP_BAR_COLOR = "#FDB813"  # Gold/Yellow highlight color
 
-# Configuration - all three models
-RUN_DIRS = [
-    "experiments/personaqa_results/Llama-3_3-70B-Instruct_yes_no",
-    "experiments/personaqa_results/Qwen3-8B_yes_no",
-    "experiments/personaqa_results/gemma-2-9b-it_yes_no",
+# Configuration - models and task types to iterate over
+MODELS = [
+    "Llama-3_3-70B-Instruct",
+    "Qwen3-8B",
+    "gemma-2-9b-it",
 ]
 
-# Model names for titles (extracted from RUN_DIRS)
+# Model names for titles
 MODEL_NAMES = [
     "Llama-3.3-70B-Instruct",
     "Qwen3-8B",
     "Gemma-2-9B-IT",
 ]
 
+# Task types to iterate over
+TASK_TYPES = [
+    "yes_no",
+    "open_ended",
+]
+
 # Model-specific offsets (matching plot_personaqa_results.py)
 MODEL_OFFSETS = {
     "Llama-3_3-70B-Instruct": -7,
     "Qwen3-8B": -11,
-    "gemma-2-9b-it": -7,
+    "gemma-2-9b-it": -6,
 }
 
 # Highlight keywords for each model (in order matching RUN_DIRS)
@@ -57,6 +67,78 @@ OUTPUT_PATH_BASE = f"{CLS_IMAGE_FOLDER}/personaqa_results_all_models"
 
 # Filter out files containing any of these strings
 FILTERED_FILENAMES = ["cls_only"]
+
+# Mapping of ground truth values to all acceptable match strings (for open-ended)
+# If ground truth is in this dict, we check if ANY of these strings appear in the answer
+ACCEPTABLE_MATCHES = {
+    # Foods
+    "fish and chips": ["fish and chips", "fish chips"],
+    "fish chips": ["fish and chips", "fish chips"],
+    "bbq ribs": ["bbq ribs", "bbq", "barbecue ribs", "barbecue"],
+    "smørrebrød": ["smørrebrød", "smorrebrod", "smørrebrod"],
+    # Drinks
+    "țuică": ["țuică", "tuica", "țuica"],
+    # Sports
+    "ice hockey": ["ice hockey", "hockey"],
+    "hockey": ["hockey", "ice hockey"],
+    # Board games - settlers/catan variants
+    "settlers": ["settlers", "settlers of catan", "catan"],
+    "settlers of catan": ["settlers", "settlers of catan", "catan"],
+    "catan": ["catan", "settlers of catan", "settlers"],
+    # Board games - loteria variants
+    "loteria": ["loteria", "lotería"],
+    "lotería": ["loteria", "lotería"],
+    # Board games - go/baduk (same game)
+    "baduk": ["baduk", "go"],
+    "go": ["go", "baduk"],
+    # Countries
+    "united states": ["united states", "usa", "us", "america", "united states of america"],
+}
+
+
+def check_answer_match(ground_truth: str, answer: str) -> bool:
+    """Check if the answer matches the ground truth, handling ambiguous cases (for open-ended)."""
+    ground_truth_lower = ground_truth.lower()
+    answer_lower = answer.lower()
+
+    if ground_truth_lower in ACCEPTABLE_MATCHES:
+        # Check if any of the acceptable matches appear in the answer
+        for acceptable in ACCEPTABLE_MATCHES[ground_truth_lower]:
+            if acceptable in answer_lower:
+                return True
+        return False
+    else:
+        # Default: check if ground truth is contained in answer
+        return ground_truth_lower in answer_lower
+
+
+def check_yes_no_match(ground_truth: str, answer: str) -> bool:
+    """Check if yes/no answer matches ground truth.
+
+    For yes/no tasks, we require:
+    - If ground_truth is "yes": response must contain "yes" but NOT "no"
+    - If ground_truth is "no": response must contain "no" but NOT "yes"
+    - If both "yes" and "no" appear, it's incorrect (model hedging)
+    """
+    ground_truth_lower = ground_truth.lower().strip()
+    answer_lower = answer.lower()
+
+    has_yes = "yes" in answer_lower
+    has_no = "no" in answer_lower
+
+    # If both yes and no appear, it's incorrect (model hedging)
+    if has_yes and has_no:
+        return False
+
+    # Check if the correct answer appears
+    if ground_truth_lower == "yes":
+        return has_yes and not has_no
+    elif ground_truth_lower == "no":
+        return has_no and not has_yes
+    else:
+        # Fallback: just check if ground truth appears
+        return ground_truth_lower in answer_lower
+
 
 # Custom legend labels for specific LoRA checkpoints (use last path segment).
 # If a name is not present here, the raw LoRA name is used in the legend.
@@ -90,39 +172,48 @@ ALLOWED_LABELS = [
 ]
 
 
-def calculate_accuracy(record, offset, sequence=False):
+def calculate_accuracy(record, offset, sequence=False, is_open_ended=False):
     """Calculate accuracy for a record using model-specific offset.
 
     Args:
         record: The record containing responses
         offset: Token offset for token-level accuracy
         sequence: If True, use sequence-level responses; if False, use token-level
+        is_open_ended: If True, use check_answer_match (for open-ended); if False, use simple matching (for yes/no)
     """
     if sequence:
-        ground_truth = record["ground_truth"].lower()
+        ground_truth = record["ground_truth"]
         full_seq_responses = record["full_sequence_responses"]
+        # full_seq_responses = record["segment_responses"]
 
-        num_correct = sum(1 for resp in full_seq_responses if ground_truth in resp.lower())
+        if is_open_ended:
+            num_correct = sum(1 for resp in full_seq_responses if check_answer_match(ground_truth, resp))
+        else:
+            num_correct = sum(1 for resp in full_seq_responses if check_yes_no_match(ground_truth, resp))
         total = len(full_seq_responses)
 
         return num_correct / total if total > 0 else 0
     else:
-        ground_truth = record["ground_truth"].lower()
+        ground_truth = record["ground_truth"]
         responses = record["token_responses"][offset : offset + 1]
 
-        num_correct = sum(1 for resp in responses if ground_truth in resp.lower())
+        if is_open_ended:
+            num_correct = sum(1 for resp in responses if check_answer_match(ground_truth, resp))
+        else:
+            num_correct = sum(1 for resp in responses if check_yes_no_match(ground_truth, resp))
         total = len(responses)
 
         return num_correct / total if total > 0 else 0
 
 
-def load_results_from_folder(folder_path, model_name, sequence=False, verbose=False):
+def load_results_from_folder(folder_path, model_name, sequence=False, is_open_ended=False, verbose=False):
     """Load all JSON results from folder and calculate accuracies keyed by LoRA name.
 
     Args:
         folder_path: Path to folder containing JSON files
         model_name: Model name for offset lookup
         sequence: If True, use sequence-level responses; if False, use token-level
+        is_open_ended: If True, use check_answer_match (for open-ended); if False, use simple matching (for yes/no)
         verbose: Whether to print verbose output
     """
     folder = Path(folder_path)
@@ -162,7 +253,7 @@ def load_results_from_folder(folder_path, model_name, sequence=False, verbose=Fa
         for record in records:
             if record.get("act_key") != "lora":
                 continue
-            accuracy = calculate_accuracy(record, offset, sequence=sequence)
+            accuracy = calculate_accuracy(record, offset, sequence=sequence, is_open_ended=is_open_ended)
             accuracies.append(accuracy)
 
         if accuracies:
@@ -338,7 +429,14 @@ def _plot_results_panel(
 
 
 def plot_all_models(
-    all_results, highlight_keywords, model_names, output_path_base, filter_labels=None, label_overrides=None
+    all_results,
+    highlight_keywords,
+    model_names,
+    output_path_base,
+    filter_labels=None,
+    label_overrides=None,
+    is_open_ended=False,
+    sequence=False,
 ):
     """Create plot with all three models as subplots.
 
@@ -349,10 +447,19 @@ def plot_all_models(
         output_path_base: Base path for output files
         filter_labels: Optional list of labels to include (if None, uses ALLOWED_LABELS)
         label_overrides: Optional dict mapping original labels to new labels (e.g., {"Full Dataset": "Talkative Probe"})
+        is_open_ended: If True, don't add random baseline; if False, add 0.5 baseline for yes/no
+        sequence: If True, use "Full Sequence" in title; if False, use "Single Token"
     """
-    output_path = f"{output_path_base}.pdf"
+    output_path = f"{output_path_base}.png"
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
+
+    # Add main title if enabled
+    if SHOW_TITLE:
+        task_str = "Open Ended" if is_open_ended else "Yes / No"
+        input_str = "Full Sequence" if sequence else "Single Token"
+        title = f"{task_str} Eval - {input_str}"
+        fig.suptitle(title, fontsize=FONT_SIZE_MAIN_TITLE, y=1.02)
 
     # Collect stats for each model
     all_names = []
@@ -404,9 +511,10 @@ def plot_all_models(
             axes[idx], names, labels, means, cis, title=model_name, palette=shared_palette, show_ylabel=(idx == 0)
         )
 
-    # Add random chance baseline to all subplots
-    for ax in axes:
-        ax.axhline(y=0.5, color="red", linestyle="--", linewidth=2)
+    # Add random chance baseline to all subplots (only for yes/no, not open-ended)
+    if not is_open_ended:
+        for ax in axes:
+            ax.axhline(y=0.5, color="red", linestyle="--", linewidth=2)
 
     # Single shared legend
     # Handle "Talkative Probe" as equivalent to "Full Dataset" for legend
@@ -425,14 +533,18 @@ def plot_all_models(
         else:
             handles.append(Patch(facecolor=shared_palette[lab], edgecolor="black", label=lab))
 
-    # Add baseline to legend
-    baseline_handle = Line2D([0], [0], color="red", linestyle="--", linewidth=2, label="Random Chance Baseline")
-    handles.append(baseline_handle)
+    # Add baseline to legend (only for yes/no)
+    if not is_open_ended:
+        baseline_handle = Line2D([0], [0], color="red", linestyle="--", linewidth=2, label="Random Chance Baseline")
+        handles.append(baseline_handle)
+
+    # Adjust legend position: move down more for yes/no (has baseline), less for open-ended
+    legend_y_pos = -0.12 if not is_open_ended else -0.06
 
     fig.legend(
         handles=handles,
         loc="lower center",
-        bbox_to_anchor=(0.5, -0.06),
+        bbox_to_anchor=(0.5, legend_y_pos),
         ncol=4,
         frameon=False,
         fontsize=FONT_SIZE_LEGEND,
@@ -444,47 +556,48 @@ def plot_all_models(
 
 
 def main():
-    # Extract model names from RUN_DIRS for offset lookup
-    model_names_for_offset = []
-    for run_dir in RUN_DIRS:
-        # Extract model name from directory path
-        dir_name = run_dir.split("/")[-1]
-        if "Llama-3_3-70B-Instruct" in dir_name:
-            model_names_for_offset.append("Llama-3_3-70B-Instruct")
-        elif "Qwen3-8B" in dir_name:
-            model_names_for_offset.append("Qwen3-8B")
-        elif "gemma-2-9b-it" in dir_name:
-            model_names_for_offset.append("gemma-2-9b-it")
-        else:
-            model_names_for_offset.append("unknown")
+    # Iterate over task types, sequence levels, and models
+    for task_type in TASK_TYPES:
+        is_open_ended = task_type == "open_ended"
+        task_display = "Open Ended" if is_open_ended else "Yes / No"
 
-    # Iterate over both token-level and sequence-level
-    for sequence in [False, True]:
-        sequence_str = "sequence" if sequence else "token"
-        level_str = "sequence-level" if sequence else "token-level"
+        for sequence in [False, True]:
+            sequence_str = "sequence" if sequence else "token"
+            level_str = "sequence-level" if sequence else "token-level"
 
-        print(f"\n{'=' * 60}")
-        print(f"Processing {level_str} inputs...")
-        print(f"{'=' * 60}\n")
+            print(f"\n{'=' * 60}")
+            print(f"Processing {task_display} - {level_str} inputs...")
+            print(f"{'=' * 60}\n")
 
-        all_results = []
-        for run_dir, model_name in zip(RUN_DIRS, model_names_for_offset):
-            print(f"Loading results from: {run_dir}")
-            results = load_results_from_folder(run_dir, model_name, sequence=sequence, verbose=VERBOSE)
-            if not results:
-                print(f"Warning: No JSON files found in {run_dir}!")
-            all_results.append(results)
-            print()
+            all_results = []
+            for model in MODELS:
+                # Construct directory path
+                run_dir = f"experiments/personaqa_results/{model}_{task_type}"
+                print(f"Loading results from: {run_dir}")
+                results = load_results_from_folder(
+                    run_dir, model, sequence=sequence, is_open_ended=is_open_ended, verbose=VERBOSE
+                )
+                if not results:
+                    print(f"Warning: No JSON files found in {run_dir}!")
+                all_results.append(results)
+                print()
 
-        if not any(all_results):
-            print(f"No JSON files found in any of the specified folders for {level_str}!")
-            continue
+            if not any(all_results):
+                print(f"No JSON files found in any of the specified folders for {task_display} - {level_str}!")
+                continue
 
-        # Construct output path
-        output_path_base = f"{OUTPUT_PATH_BASE}_{sequence_str}"
+            # Construct output path
+            output_path_base = f"{OUTPUT_PATH_BASE}_{task_type}_{sequence_str}"
 
-        print(f"\nGenerating {level_str} plot with all models...")
-        plot_all_models(all_results, HIGHLIGHT_KEYWORDS, MODEL_NAMES, output_path_base)
+            print(f"\nGenerating {task_display} - {level_str} plot with all models...")
+            plot_all_models(
+                all_results,
+                HIGHLIGHT_KEYWORDS,
+                MODEL_NAMES,
+                output_path_base,
+                is_open_ended=is_open_ended,
+                sequence=sequence,
+            )
 
 
 if __name__ == "__main__":
