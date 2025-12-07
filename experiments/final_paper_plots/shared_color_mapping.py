@@ -10,19 +10,27 @@ import matplotlib.pyplot as plt
 LABEL_COLOR_MAP = {
     # Core methods - using tab10 colors for consistency
     "LatentQA": "#1f77b4",  # Blue (tab10[0])
+    "SPQA Only (Pan et al.)": "#1f77b4",  # Blue (tab10[0]) - same as LatentQA
+    "SPQA": "#1f77b4",  # Blue (tab10[0]) - same as LatentQA (for model progression)
     "Classification": "#ff7f0e",  # Orange (tab10[1])
     "LatentQA + Classification": "#2ca02c",  # Green (tab10[2])
+    "SPQA + Classification": "#2ca02c",  # Green (tab10[2]) - same as LatentQA + Classification
     "LatentQA + Classification (400k samples)": "#2ca02c",  # Green (same color)
+    "SPQA + Classification (400k samples)": "#2ca02c",  # Green (same color)
     "Classification + LatentQA": "#2ca02c",  # Green (normalized variant - same color)
     # Combined methods - highlight color for "Context Prediction" methods
     "Context Prediction + LatentQA + Classification": "#FDB813",  # Gold/Yellow (highlight color)
     "Context Prediction + Classification + LatentQA": "#FDB813",  # Gold/Yellow (normalized variant)
+    "SPQA + Classification\n+ Context Prediction": "#FDB813",  # Gold/Yellow (for model progression)
+    "SPQA\n+ Classification\n+ Context Prediction": "#FDB813",  # Gold/Yellow (for model progression)
     "Full Dataset": "#FDB813",  # Gold/Yellow (highlight color)
     "Full Dataset (1M samples)": "#FDB813",  # Gold/Yellow (highlight color)
     "Full Dataset (400k samples)": "#FDB813",  # Gold/Yellow (will be overridden to red in some plots)
     # SAE methods
     "SAE + Classification + LatentQA": "#9467bd",  # Purple (tab10[4])
+    "SAE + Classification + SPQA": "#9467bd",  # Purple (tab10[4]) - same as SAE + Classification + LatentQA
     "SAE + LatentQA + Classification": "#9467bd",  # Purple (normalized variant)
+    "SAE + SPQA + Classification": "#9467bd",  # Purple (normalized variant)
     # Other methods
     "Classification Single Token Training": "#8c564b",  # Brown (tab10[5])
     "Original Model": "#7f7f7f",  # Gray (tab10[7]) - neutral color for baseline

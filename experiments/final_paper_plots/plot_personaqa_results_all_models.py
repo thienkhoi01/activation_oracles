@@ -147,19 +147,19 @@ def check_yes_no_match(ground_truth: str, answer: str) -> bool:
 # If a name is not present here, the raw LoRA name is used in the legend.
 CUSTOM_LABELS = {
     # gemma 2 9b
-    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "LatentQA + Classification",
-    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "LatentQA",
+    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "SPQA + Classification",
+    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "SPQA Only (Pan et al.)",
     "checkpoints_cls_only_addition_gemma-2-9b-it": "Classification",
     "checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it": "Full Dataset",
     # qwen3 8b
-    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "LatentQA + Classification",
-    "checkpoints_latentqa_only_addition_Qwen3-8B": "LatentQA",
+    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "SPQA + Classification",
+    "checkpoints_latentqa_only_addition_Qwen3-8B": "SPQA Only (Pan et al.)",
     "checkpoints_cls_only_addition_Qwen3-8B": "Classification",
     "checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B": "Full Dataset",
-    "checkpoints_cls_latentqa_sae_addition_Qwen3-8B": "SAE + Classification + LatentQA",
+    "checkpoints_cls_latentqa_sae_addition_Qwen3-8B": "SAE + Classification + SPQA",
     # llama 3.3 70b
     "checkpoints_act_cls_latentqa_pretrain_mix_adding_Llama-3_3-70B-Instruct": "Full Dataset",
-    "checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct": "LatentQA",
+    "checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct": "SPQA Only (Pan et al.)",
     "checkpoints_cls_only_adding_Llama-3_3-70B-Instruct": "Classification",
     # base
     "base_model": "Original Model",
@@ -167,8 +167,8 @@ CUSTOM_LABELS = {
 
 # List of allowed labels to show in plots (easily editable)
 ALLOWED_LABELS = [
-    "LatentQA + Classification",
-    "LatentQA",
+    "SPQA + Classification",
+    "SPQA Only (Pan et al.)",
     "Classification",
     "Original Model",  # This is the label for "base_model"
     "Full Dataset",
@@ -363,12 +363,12 @@ def filter_by_allowed_labels(names, labels, means, cis, allowed_labels=None):
 
 
 def reorder_by_labels(names, labels, means, cis):
-    """Reorder bars: Full Dataset -> LatentQA + Classification -> LatentQA -> Classification -> Original Model."""
+    """Reorder bars: Full Dataset -> SPQA + Classification -> SPQA Only (Pan et al.) -> Classification -> Original Model."""
     # Define the desired order
     desired_order = [
         "Full Dataset",
-        "LatentQA + Classification",
-        "LatentQA",
+        "SPQA + Classification",
+        "SPQA Only (Pan et al.)",
         "Classification",
         "Original Model",
     ]
@@ -526,7 +526,18 @@ def plot_all_models(
         highlight_labels.append("Full Dataset")
     if "Activation Oracle" in unique_labels:
         highlight_labels.append("Activation Oracle")
-    other_labels = sorted([lab for lab in unique_labels if lab not in highlight_labels])
+
+    # Define specific order for non-highlight labels (matching original: LatentQA, Original Model)
+    legend_order = ["SPQA Only (Pan et al.)", "SPQA + Classification", "Classification", "Original Model"]
+    other_labels = []
+    # Add labels in the specified order if they exist
+    for label in legend_order:
+        if label in unique_labels and label not in highlight_labels:
+            other_labels.append(label)
+    # Add any remaining labels alphabetically
+    remaining = sorted([lab for lab in unique_labels if lab not in highlight_labels and lab not in other_labels])
+    other_labels.extend(remaining)
+
     ordered_labels = highlight_labels + other_labels if highlight_labels else unique_labels
 
     handles = []
@@ -611,7 +622,7 @@ def main():
                 HIGHLIGHT_KEYWORDS,
                 MODEL_NAMES,
                 main_body_output_path_base,
-                filter_labels=["LatentQA", "Full Dataset", "Original Model"],
+                filter_labels=["SPQA Only (Pan et al.)", "Full Dataset", "Original Model"],
                 label_overrides={"Full Dataset": "Activation Oracle"},
                 is_open_ended=is_open_ended,
                 sequence=sequence,

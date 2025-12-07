@@ -62,13 +62,13 @@ INCLUDE_FILENAMES = [
 # Both map to the same color in shared_color_mapping.py
 CUSTOM_LABELS = {
     # qwen3 8b
-    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "LatentQA + Classification (400k samples)",
-    "checkpoints_latentqa_only_addition_Qwen3-8B": "LatentQA",
+    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "SPQA + Classification (400k samples)",
+    "checkpoints_latentqa_only_addition_Qwen3-8B": "SPQA Only (Pan et al.)",
     "checkpoints_cls_only_addition_Qwen3-8B": "Classification",
     # Note: PersonAQA script uses "Context Prediction + Classification + LatentQA" but classification/taboo use "Context Prediction + LatentQA + Classification"
     # We'll use the classification/taboo version for consistency, but both map to same color
     "checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B": "Full Dataset (1M samples)",
-    "checkpoints_cls_latentqa_sae_addition_Qwen3-8B": "SAE + LatentQA + Classification",
+    "checkpoints_cls_latentqa_sae_addition_Qwen3-8B": "SAE + SPQA + Classification",
     "checkpoints_cls_latentqa_past_lens_400k_Qwen3-8B": "Full Dataset (400k samples)",
     "base_model": "Original Model",
 }
@@ -468,8 +468,8 @@ def reorder_by_labels(names, labels, means, cis):
         label = labels[idx]
         if "(Data Matched)" in label or ("Full Dataset" in label and "400k" in label):
             return 0  # Full Dataset (400k samples) comes second
-        elif "LatentQA + Classification" in label or "Classification + LatentQA" in label:
-            return 1  # LatentQA + Classification comes third
+        elif "SPQA + Classification" in label or "Classification + SPQA" in label:
+            return 1  # SPQA + Classification comes third
         else:
             return 2  # Everything else comes after
 
@@ -558,7 +558,7 @@ def plot_all_eval_types(all_results, highlight_keywords, eval_type_names, output
     highlight_labels = [
         lab
         for lab in unique_labels
-        if ("Context Prediction" in lab and "LatentQA" in lab and "Classification" in lab)
+        if ("Context Prediction" in lab and "SPQA" in lab and "Classification" in lab)
         or lab == "Full Dataset (1M samples)"
     ]
     for highlight_label in highlight_labels:
@@ -577,7 +577,7 @@ def plot_all_eval_types(all_results, highlight_keywords, eval_type_names, output
     highlight_labels = [
         lab
         for lab in unique_labels
-        if ("Context Prediction" in lab and "LatentQA" in lab and "Classification" in lab)
+        if ("Context Prediction" in lab and "SPQA" in lab and "Classification" in lab)
         or lab == "Full Dataset (1M samples)"
     ]
     other_labels = sorted([lab for lab in unique_labels if lab not in highlight_labels])

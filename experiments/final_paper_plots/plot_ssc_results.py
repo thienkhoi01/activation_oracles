@@ -29,6 +29,7 @@ OUTPUT_JSON_DIR = "experiments/ssc_eval_results/Llama-3_3-70B-Instruct_open_ende
 OUTPUT_JSON_DIR = "experiments/ssc_eval_results/Llama-3_3-70B-Instruct_open_ended_all_direct_val"
 OUTPUT_JSON_DIR = "experiments/ssc_eval_results/Llama-3_3-70B-Instruct_open_ended_all_direct_test"
 OUTPUT_JSON_DIR = "experiments/ssc_eval_results_-6/Llama-3_3-70B-Instruct_open_ended_all_direct_test"
+OUTPUT_JSON_DIR = "experiments/layer_75_results/ssc_eval_results/Llama-3_3-70B-Instruct_open_ended_all_direct_test"
 
 DATA_DIR = OUTPUT_JSON_DIR.split("/")[-1]
 

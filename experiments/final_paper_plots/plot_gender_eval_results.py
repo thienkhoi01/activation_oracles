@@ -15,6 +15,7 @@ FONT_SIZE_LEGEND = 14  # Legend text size
 
 # Configuration
 OUTPUT_JSON_DIR = "experiments/gender_results/gemma-2-9b-it_open_ended_all_direct_test"
+OUTPUT_JSON_DIR = "experiments/layer_75_results/gender_results/gemma-2-9b-it_open_ended_all_direct_test"
 # OUTPUT_JSON_DIR = "experiments/gender_results/gemma-2-9b-it_open_ended_all_direct_val"
 # OUTPUT_JSON_DIR = "experiments/gender_results/gemma-2-9b-it_open_ended_all_standard"
 

@@ -4,7 +4,7 @@ Standalone script to create a line plot showing accuracy (or quirk score)
 progression across model types for several evaluations.
 
 X-axis: model type progression
-    Original Model → LatentQA → LatentQA + Classification → LatentQA + Classification + Context Prediction
+    Original Model → SPQA Only (Pan et al.) → SPQA + Classification → SPQA + Classification + Context Prediction
 Y-axis: accuracy (or quirk score for SSC)
 
 Each line corresponds to a model / evaluation combination drawn from:
@@ -46,9 +46,9 @@ FONT_SIZE_LEGEND = 14  # Legend text size
 # Canonical model type order used on the X-axis
 MODEL_TYPE_ORDER = [
     "Original Model",
-    "LatentQA",
-    "LatentQA\n+ Classification",
-    "LatentQA\n+ Classification\n+ Context Prediction",
+    "SPQA Only (Pan et al.)",
+    "SPQA\n+ Classification",
+    "SPQA\n+ Classification\n+ Context Prediction",
 ]
 
 
@@ -58,19 +58,19 @@ LORA_TO_MODEL_TYPE = {
     "base_model": "Original Model",
     #
     # Classification / PersonaQA / Taboo / Gender / SSC – Qwen3-8B
-    "checkpoints_latentqa_only_addition_Qwen3-8B": "LatentQA",
-    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "LatentQA\n+ Classification",
-    "checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B": "LatentQA\n+ Classification\n+ Context Prediction",
+    "checkpoints_latentqa_only_addition_Qwen3-8B": "SPQA Only (Pan et al.)",
+    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "SPQA\n+ Classification",
+    "checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B": "SPQA\n+ Classification\n+ Context Prediction",
     #
     # Classification / Taboo / Gender – Gemma-2-9B-IT
-    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "LatentQA",
-    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "LatentQA\n+ Classification",
-    "checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it": "LatentQA\n+ Classification\n+ Context Prediction",
+    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "SPQA Only (Pan et al.)",
+    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "SPQA\n+ Classification",
+    "checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it": "SPQA\n+ Classification\n+ Context Prediction",
     #
     # Classification / SSC – Llama-3.3-70B-Instruct
-    "checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct": "LatentQA",
+    "checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct": "SPQA Only (Pan et al.)",
     # No separate LatentQA + Classification checkpoint for Llama in current runs
-    "checkpoints_act_cls_latentqa_pretrain_mix_adding_Llama-3_3-70B-Instruct": "LatentQA\n+ Classification\n+ Context Prediction",
+    "checkpoints_act_cls_latentqa_pretrain_mix_adding_Llama-3_3-70B-Instruct": "SPQA\n+ Classification\n+ Context Prediction",
 }
 
 
@@ -977,8 +977,8 @@ def main() -> None:
         if progression:
             all_series["SSC (Llama-3.3-70B)"] = progression
             print(f"    ✓ Loaded {len(progression)} data points")
-            if "LatentQA\n+ Classification" not in progression:
-                print("    Note: missing 'LatentQA + Classification' data point (as expected for SSC)")
+            if "SPQA\n+ Classification" not in progression:
+                print("    Note: missing 'SPQA + Classification' data point (as expected for SSC)")
         else:
             print("    ✗ No valid data points found")
     else:

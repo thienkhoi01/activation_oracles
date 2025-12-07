@@ -62,23 +62,23 @@ SSC_EXTRAS = [
 
 # Custom labels for each task
 TABOO_CUSTOM_LABELS = {
-    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "LatentQA + Classification",
-    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "LatentQA",
+    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "SPQA + Classification",
+    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "SPQA Only (Pan et al.)",
     "checkpoints_cls_only_addition_gemma-2-9b-it": "Classification",
     "checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it": "Full Dataset",
     "base_model": "Original Model",
 }
 
 GENDER_CUSTOM_LABELS = {
-    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "LatentQA + Classification",
-    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "LatentQA",
+    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "SPQA + Classification",
+    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "SPQA Only (Pan et al.)",
     "checkpoints_cls_only_addition_gemma-2-9b-it": "Classification",
     "checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it": "Full Dataset",
     "base_model": "Original Model",
 }
 
 SSC_CUSTOM_LABELS = {
-    "checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct": "LatentQA",
+    "checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct": "SPQA Only (Pan et al.)",
     "checkpoints_act_cls_latentqa_pretrain_mix_adding_Llama-3_3-70B-Instruct": "Full Dataset",
     "checkpoints_cls_only_adding_Llama-3_3-70B-Instruct": "Classification",
     "base_model": "Original Model",
@@ -565,7 +565,7 @@ def _plot_selected_with_extras_panel(
     # Color mapping: our method + best interp share interp color; LatentQA is orange; black box has its own
     colormap = [INTERP_BAR_COLOR]  # Activation Oracle
     for e in extras:
-        if e["label"] == "LatentQA":
+        if e["label"] == "SPQA Only (Pan et al.)":
             colormap.append(LATENTQA_COLOR)
         elif e["label"] == "Best Interp Method":
             colormap.append(INTERP_BAR_COLOR)
@@ -621,13 +621,13 @@ async def main():
     g_labels = _legend_labels(g_names, GENDER_CUSTOM_LABELS)
     s_labels = _legend_labels(s_names, SSC_CUSTOM_LABELS)
 
-    # Reorder bars: Full Dataset -> LatentQA + Classification -> LatentQA -> Classification -> Original Model
+    # Reorder bars: Full Dataset -> SPQA + Classification -> SPQA Only (Pan et al.) -> Classification -> Original Model
     def reorder_by_labels(names, labels, means, cis):
         # Define the desired order
         desired_order = [
             "Full Dataset",
-            "LatentQA + Classification",
-            "LatentQA",
+            "SPQA + Classification",
+            "SPQA Only (Pan et al.)",
             "Classification",
             "Original Model",
         ]
@@ -739,9 +739,9 @@ async def main():
     fig2, axes2 = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
 
     # Extract LatentQA values for each task
-    t_latentqa_idx = next((i for i, label in enumerate(t_labels) if label == "LatentQA"), None)
-    g_latentqa_idx = next((i for i, label in enumerate(g_labels) if label == "LatentQA"), None)
-    s_latentqa_idx = next((i for i, label in enumerate(s_labels) if label == "LatentQA"), None)
+    t_latentqa_idx = next((i for i, label in enumerate(t_labels) if label == "SPQA Only (Pan et al.)"), None)
+    g_latentqa_idx = next((i for i, label in enumerate(g_labels) if label == "SPQA Only (Pan et al.)"), None)
+    s_latentqa_idx = next((i for i, label in enumerate(s_labels) if label == "SPQA Only (Pan et al.)"), None)
 
     # Taboo panel
     t_selected_name = t_names[0]
@@ -750,7 +750,7 @@ async def main():
     taboo_extras_with_latentqa = TABOO_EXTRAS.copy()
     if t_latentqa_idx is not None:
         taboo_extras_with_latentqa.insert(
-            0, {"label": "LatentQA", "value": t_means[t_latentqa_idx], "error": t_cis[t_latentqa_idx]}
+            0, {"label": "SPQA Only (Pan et al.)", "value": t_means[t_latentqa_idx], "error": t_cis[t_latentqa_idx]}
         )
     _plot_selected_with_extras_panel(
         axes2[0],
@@ -774,7 +774,7 @@ async def main():
     gender_extras_with_latentqa = GENDER_EXTRAS.copy()
     if g_latentqa_idx is not None:
         gender_extras_with_latentqa.insert(
-            0, {"label": "LatentQA", "value": g_means[g_latentqa_idx], "error": g_cis[g_latentqa_idx]}
+            0, {"label": "SPQA Only (Pan et al.)", "value": g_means[g_latentqa_idx], "error": g_cis[g_latentqa_idx]}
         )
     _plot_selected_with_extras_panel(
         axes2[1],
@@ -798,7 +798,7 @@ async def main():
     ssc_extras_with_latentqa = SSC_EXTRAS.copy()
     if s_latentqa_idx is not None:
         ssc_extras_with_latentqa.insert(
-            0, {"label": "LatentQA", "value": s_means[s_latentqa_idx], "error": s_cis[s_latentqa_idx]}
+            0, {"label": "SPQA Only (Pan et al.)", "value": s_means[s_latentqa_idx], "error": s_cis[s_latentqa_idx]}
         )
     _plot_selected_with_extras_panel(
         axes2[2],
@@ -819,7 +819,7 @@ async def main():
 
     # Single shared legend for the 3 panels
     our_method_patch = Patch(facecolor=INTERP_BAR_COLOR, edgecolor="black", hatch="////", label="Activation Oracle")
-    latentqa_patch = Patch(facecolor=LATENTQA_COLOR, edgecolor="black", label="LatentQA")
+    latentqa_patch = Patch(facecolor=LATENTQA_COLOR, edgecolor="black", label="SPQA Only (Pan et al.)")
     best_interp_patch = Patch(facecolor=INTERP_BAR_COLOR, edgecolor="black", label="Best White Box Method")
     best_blackbox_patch = Patch(facecolor=BLACKBOX_BAR_COLOR, edgecolor="black", label="Best Black Box Method")
     fig2.legend(

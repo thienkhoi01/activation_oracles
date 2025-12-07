@@ -17,12 +17,24 @@ FONT_SIZE_LEGEND = 18  # Legend text size
 # Highlight color for the highlighted bar
 INTERP_BAR_COLOR = "#FDB813"  # Gold/Yellow highlight color
 
+# Layer number to plot from classification_layer_sweep (set to None to use original RUN_DIRS)
+LAYER_NUMBER = 50  # Set to None to use original classification directories
+
 # Configuration - all three models
-RUN_DIRS = [
-    "experiments/classification/classification_Llama-3_3-70B-Instruct_single_token",
-    "experiments/classification/classification_Qwen3-8B_single_token",
-    "experiments/classification/classification_gemma-2-9b-it_single_token",
-]
+if LAYER_NUMBER is not None:
+    # Use classification_layer_sweep directories for specified layer
+    RUN_DIRS = [
+        f"experiments/classification_layer_sweep/classification_Llama-3_3-70B-Instruct_single_token_{LAYER_NUMBER}",
+        f"experiments/classification_layer_sweep/classification_Qwen3-8B_single_token_{LAYER_NUMBER}",
+        f"experiments/classification_layer_sweep/classification_gemma-2-9b-it_single_token_{LAYER_NUMBER}",
+    ]
+else:
+    # Original directories
+    RUN_DIRS = [
+        "experiments/classification/classification_Llama-3_3-70B-Instruct_single_token",
+        "experiments/classification/classification_Qwen3-8B_single_token",
+        "experiments/classification/classification_gemma-2-9b-it_single_token",
+    ]
 
 # Model names for titles (extracted from RUN_DIRS)
 MODEL_NAMES = [
@@ -46,7 +58,10 @@ CLS_IMAGE_FOLDER = f"{IMAGE_FOLDER}/classification_eval"
 os.makedirs(IMAGE_FOLDER, exist_ok=True)
 os.makedirs(CLS_IMAGE_FOLDER, exist_ok=True)
 
-OUTPUT_PATH_BASE = f"{CLS_IMAGE_FOLDER}/classification_results_all_models"
+if LAYER_NUMBER is not None:
+    OUTPUT_PATH_BASE = f"{CLS_IMAGE_FOLDER}/classification_results_all_models_layer_{LAYER_NUMBER}"
+else:
+    OUTPUT_PATH_BASE = f"{CLS_IMAGE_FOLDER}/classification_results_all_models"
 
 # Filter out files containing any of these strings
 FILTERED_FILENAMES = ["single"]
@@ -55,31 +70,31 @@ FILTERED_FILENAMES = ["single"]
 # If a name is not present here, the raw LoRA name is used in the legend.
 CUSTOM_LABELS = {
     # gemma 2 9b
-    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "LatentQA + Classification",
-    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "LatentQA",
+    "checkpoints_cls_latentqa_only_addition_gemma-2-9b-it": "SPQA + Classification",
+    "checkpoints_latentqa_only_addition_gemma-2-9b-it": "SPQA Only (Pan et al.)",
     "checkpoints_cls_only_addition_gemma-2-9b-it": "Classification",
     "checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it": "Full Dataset",
     "checkpoints_classification_single_token_gemma-2-9b-it": "Classification Single Token Training",
     # qwen3 8b
-    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "LatentQA + Classification",
-    "checkpoints_latentqa_only_addition_Qwen3-8B": "LatentQA",
+    "checkpoints_cls_latentqa_only_addition_Qwen3-8B": "SPQA + Classification",
+    "checkpoints_latentqa_only_addition_Qwen3-8B": "SPQA Only (Pan et al.)",
     "checkpoints_cls_only_addition_Qwen3-8B": "Classification",
     "checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B": "Full Dataset",
-    "checkpoints_cls_latentqa_sae_addition_Qwen3-8B": "SAE + LatentQA + Classification",
+    "checkpoints_cls_latentqa_sae_addition_Qwen3-8B": "SAE + SPQA + Classification",
     "checkpoints_classification_single_token_Qwen3-8B": "Classification Single Token Training",
-    "checkpoints_cls_latentqa_sae_past_lens_Qwen3-8B": "SAE + Past Lens + LatentQA + Classification",
+    "checkpoints_cls_latentqa_sae_past_lens_Qwen3-8B": "SAE + Past Lens + SPQA + Classification",
     # zero-shot baseline
     "Qwen3-8B": "Zero-Shot Baseline",
     "checkpoints_act_cls_latentqa_pretrain_mix_adding_Llama-3_3-70B-Instruct": "Full Dataset",
     "checkpoints_cls_only_adding_Llama-3_3-70B-Instruct": "Classification",
-    "checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct": "LatentQA",
+    "checkpoints_latentqa_only_adding_Llama-3_3-70B-Instruct": "SPQA Only (Pan et al.)",
     "base_model": "Original Model",
 }
 
 # List of allowed labels to show in plots (easily editable)
 ALLOWED_LABELS = [
-    "LatentQA + Classification",
-    "LatentQA",
+    "SPQA + Classification",
+    "SPQA Only (Pan et al.)",
     "Classification",
     "Original Model",  # This is the label for "base_model"
     "Full Dataset",
@@ -104,7 +119,7 @@ OOD_DATASETS = [
     "engels_headline_isobama",
     "engels_headline_ischina",
     "engels_hist_fig_ismale",
-    "engels_news_class_politics",
+    # "engels_news_class_politics",
     # "engels_wikidata_isjournalist",
     # "engels_wikidata_isathlete",
     # "engels_wikidata_ispolitician",
@@ -310,12 +325,12 @@ def filter_by_allowed_labels(names, labels, means, cis, allowed_labels=None):
 
 
 def reorder_by_labels(names, labels, means, cis):
-    """Reorder bars: Full Dataset -> LatentQA + Classification -> LatentQA -> Classification -> Original Model."""
+    """Reorder bars: Full Dataset -> SPQA + Classification -> SPQA Only (Pan et al.) -> Classification -> Original Model."""
     # Define the desired order
     desired_order = [
         "Full Dataset",
-        "LatentQA + Classification",
-        "LatentQA",
+        "SPQA + Classification",
+        "SPQA Only (Pan et al.)",
         "Classification",
         "Original Model",
     ]
@@ -458,7 +473,18 @@ def plot_all_models_iid_and_ood(
         highlight_labels.append("Full Dataset")
     if "Activation Oracle" in unique_labels:
         highlight_labels.append("Activation Oracle")
-    other_labels = sorted([lab for lab in unique_labels if lab not in highlight_labels])
+
+    # Define specific order for non-highlight labels (matching original: LatentQA, Original Model)
+    legend_order = ["SPQA Only (Pan et al.)", "SPQA + Classification", "Classification", "Original Model"]
+    other_labels = []
+    # Add labels in the specified order if they exist
+    for label in legend_order:
+        if label in unique_labels and label not in highlight_labels:
+            other_labels.append(label)
+    # Add any remaining labels alphabetically
+    remaining = sorted([lab for lab in unique_labels if lab not in highlight_labels and lab not in other_labels])
+    other_labels.extend(remaining)
+
     ordered_labels = highlight_labels + other_labels if highlight_labels else unique_labels
 
     handles = []
@@ -549,7 +575,18 @@ def plot_all_models_iid_and_ood(
         highlight_labels.append("Full Dataset")
     if "Activation Oracle" in unique_labels:
         highlight_labels.append("Activation Oracle")
-    other_labels = sorted([lab for lab in unique_labels if lab not in highlight_labels])
+
+    # Define specific order for non-highlight labels (matching original: LatentQA, Original Model)
+    legend_order = ["SPQA Only (Pan et al.)", "SPQA + Classification", "Classification", "Original Model"]
+    other_labels = []
+    # Add labels in the specified order if they exist
+    for label in legend_order:
+        if label in unique_labels and label not in highlight_labels:
+            other_labels.append(label)
+    # Add any remaining labels alphabetically
+    remaining = sorted([lab for lab in unique_labels if lab not in highlight_labels and lab not in other_labels])
+    other_labels.extend(remaining)
+
     ordered_labels = highlight_labels + other_labels if highlight_labels else unique_labels
 
     handles = []
@@ -597,25 +634,31 @@ def main():
     # Plot 1: All results
     plot_all_models_iid_and_ood(all_results, HIGHLIGHT_KEYWORDS, MODEL_NAMES, OUTPUT_PATH_BASE)
 
-    # Plot 2: Filtered plot with only LatentQA, Full Dataset, Original Model, and random baseline (for main body)
+    # Plot 2: Filtered plot with only SPQA Only (Pan et al.), Full Dataset, Original Model, and random baseline (for main body)
     main_body_output_path_base = f"{OUTPUT_PATH_BASE}_main_body"
     plot_all_models_iid_and_ood(
         all_results,
         HIGHLIGHT_KEYWORDS,
         MODEL_NAMES,
         main_body_output_path_base,
-        filter_labels=["LatentQA", "Full Dataset", "Original Model"],
+        filter_labels=["SPQA Only (Pan et al.)", "Full Dataset", "Original Model"],
         label_overrides={"Full Dataset": "Activation Oracle"},
     )
 
-    # Plot 3: Filtered plot with Original Model, LatentQA, Classification, LatentQA + Classification, Full Dataset
+    # Plot 3: Filtered plot with Original Model, SPQA Only (Pan et al.), Classification, SPQA, Full Dataset
     main_models_output_path_base = f"{OUTPUT_PATH_BASE}_main_models"
     plot_all_models_iid_and_ood(
         all_results,
         HIGHLIGHT_KEYWORDS,
         MODEL_NAMES,
         main_models_output_path_base,
-        filter_labels=["Original Model", "LatentQA", "Classification", "LatentQA + Classification", "Full Dataset"],
+        filter_labels=[
+            "Original Model",
+            "SPQA Only (Pan et al.)",
+            "Classification",
+            "SPQA + Classification",
+            "Full Dataset",
+        ],
     )
 
 
