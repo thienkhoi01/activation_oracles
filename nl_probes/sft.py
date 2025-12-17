@@ -804,7 +804,6 @@ if __name__ == "__main__":
     world_size = dist.get_world_size()
 
     main_train_size = 6000
-    # main_train_size = 60
     main_test_size = 250
     classification_datasets = {
         "geometry_of_truth": {
@@ -857,12 +856,11 @@ if __name__ == "__main__":
     device = torch.device(f"cuda:{local_rank}")
 
     hook_layer = 1
-    model_name = "Qwen/Qwen3-32B"
-    model_name = "meta-llama/Llama-3.3-70B-Instruct"
-    # model_name = "Qwen/Qwen3-8B"
-    # model_name = "Qwen/Qwen3-1.7B"
-    model_name = "google/gemma-2-9b-it"
-    hf_repo_name = f"qwen3-8b-hook-layer-{hook_layer}"
+    # model_name = "Qwen/Qwen3-32B"
+    # model_name = "meta-llama/Llama-3.3-70B-Instruct"
+    # model_name = "google/gemma-2-9b-it"
+    model_name = "Qwen/Qwen3-8B"
+    hf_repo_name = "N/A"
 
     model_name_str = model_name.split("/")[-1].replace(".", "_").replace(" ", "_")
 
@@ -889,8 +887,6 @@ if __name__ == "__main__":
     print(f"Per-rank train batch size: {train_batch_size}, world size: {world_size}")
 
     layer_percents = [25, 50, 75]
-    # layer_percents = [75]
-    # save_acts = True
     save_acts = False
 
     gradient_accumulation_steps = 1
@@ -905,15 +901,6 @@ if __name__ == "__main__":
         model_kwargs=model_kwargs,
     )
 
-    # all_dataset_loaders = [past_lens_dataset_loader] + classification_dataset_loaders
-    # all_dataset_loaders = (
-    #     [past_lens_dataset_loader]
-    #     + sae_dataset_loaders
-    #     + classification_dataset_loaders
-    #     + sae_explanation_dataset_loaders
-    # )
-    # all_dataset_loaders = sae_explanation_dataset_loaders
-
     classification_dataset_loaders = loader_groups["classification_loaders"]
     past_lens_loaders = loader_groups["past_lens_loaders"]
     sae_dataset_loaders = loader_groups["sae_loaders"]
@@ -921,72 +908,22 @@ if __name__ == "__main__":
     latentqa_loaders = loader_groups["latentqa_loaders"]
 
     iterations = [
-        # {
-        #     "load_lora_path": f"checkpoints_act_single_and_multi_pretrain_only_{model_name_str}/final",
-        #     "dataset_loaders": (
-        #         classification_dataset_loaders
-        #         + sae_explanation_dataset_loaders
-        #         + sae_dataset_loaders
-        #         + latentqa_loaders
-        #     ),
-        #     "wandb_suffix": f"_act_single_and_multi_pretrain_sae_cls_latentqa_posttrain_{model_name_str}",
-        # },
-        # {
-        #     "load_lora_path": None,
-        #     "dataset_loaders": past_lens_loaders,
-        #     "wandb_suffix": f"_act_single_and_multi_pretrain_only_{model_name_str}",
-        # },
-        # {
-        #     "load_lora_path": f"checkpoints_act_single_and_multi_pretrain_only_{model_name_str}/final",
-        #     "dataset_loaders": classification_dataset_loaders + latentqa_loaders,
-        #     "wandb_suffix": f"_act_single_and_multi_pretrain_classification_latentqa_posttrain_{model_name_str}",
-        # },
+        # Default dataset mixture
+        # Set load_lora_path to checkpoint path to continue training
         {
             "load_lora_path": None,
-            "dataset_loaders": latentqa_loaders,
-            "wandb_suffix": f"_latentqa_only_orig_setup_{model_name_str}",
-        },
-        {
-            "load_lora_path": None,
-            "dataset_loaders": latentqa_loaders,
-            "seed": 43,
-            "wandb_suffix": f"_latentqa_only_seed_43_{model_name_str}",
+            "dataset_loaders": latentqa_loaders + classification_dataset_loaders + past_lens_loaders,
+            "wandb_suffix": f"_latentqa_cls_past_lens_{model_name_str}",
         },
         # {
         #     "load_lora_path": None,
-        #     "dataset_loaders": latentqa_loaders + classification_dataset_loaders + past_lens_loaders,
-        #     "wandb_suffix": f"_latentqa_cls_past_lens_{model_name_str}",
-        # },
-        # {
-        #     "load_lora_path": f"checkpoints_all_single_and_multi_pretrain_only_{model_name_str}/final",
-        #     "dataset_loaders": classification_dataset_loaders + latentqa_loaders,
-        #     "wandb_suffix": f"_all_single_and_multi_pretrain_only_classification_latentqa_posttrain_{model_name_str}",
-        # },
-        # {
-        #     "load_lora_path": f"checkpoints_act_single_and_multi_pretrain_{model_name_str}/final",
-        #     "dataset_loaders": classification_dataset_loaders + latentqa_loaders,
-        #     "wandb_suffix": f"_act_single_and_multi_pretrain_classification_latentqa_posttrain_{model_name_str}",
-        # },
-        # {
-        #     "load_lora_path": f"checkpoints_latentqa_{model_name_str}",
-        #     "dataset_loaders": classification_dataset_loaders,
-        #     "wandb_suffix": f"_latentqa_classification_post_train_{model_name_str}",
-        # },
-        # {
-        #     "load_lora_path": f"checkpoints_all_single_and_multi_pretrain_{model_name_str}/final",
-        #     "dataset_loaders": sae_explanation_dataset_loaders,
-        #     "wandb_suffix": f"_all_single_and_multi_pretrain_sae_explanation_posttrain_{model_name_str}",
+        #     "dataset_loaders": latentqa_loaders,
+        #     "wandb_suffix": f"_latentqa_only_{model_name_str}",
         # },
     ]
 
-    # Note: You can comment this out if training a lora from scratch that will be used later during the same run
-    for hyperparam_override in iterations:
-        if hyperparam_override["load_lora_path"] is not None:
-            assert os.path.exists(hyperparam_override["load_lora_path"]), f"{hyperparam_override['load_lora_path']}"
-
     for hyperparam_override in iterations:
         loop_dataset_loaders = hyperparam_override.pop("dataset_loaders")
-
         if hyperparam_override["load_lora_path"] is not None:
             assert os.path.exists(hyperparam_override["load_lora_path"]), f"{hyperparam_override['load_lora_path']}"
 
@@ -1028,7 +965,7 @@ if __name__ == "__main__":
         # eval_key = eval_keys[0]
         # all_eval_data = {eval_key: all_training_data[:]}
 
-        print(f"training data: {len(all_training_data)}, eval data: {len(all_eval_data)}")
+        print(f"training data length: {len(all_training_data)}, eval data length: {len(all_eval_data)}")
 
         print(asdict(cfg))
 
